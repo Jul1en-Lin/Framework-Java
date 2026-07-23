@@ -5,6 +5,7 @@ spring:
     name: lien-gateway
   profiles:
     active: ${RUN_ENV}
+  # 在 nacos 的 frameworkjava-${RUN_ENV} 空间下的寻找名为 lien-gateway-${RUN_ENV} 的 yaml 配置文件
   cloud:
     nacos:
       discovery:
