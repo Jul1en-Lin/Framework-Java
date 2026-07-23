@@ -26,6 +26,7 @@
         <module>lien-mstemplate/lien-mstemplate-api</module>
         <module>lien-mstemplate/lien-mstemplate-service</module>
         <module>lien-gateway</module>
+        <module>lien-common</module>
     </modules>
     <scm>
         <connection/>
