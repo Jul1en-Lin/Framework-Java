@@ -1,8 +1,8 @@
 server:
-  port: 18085
+  port: 18080
 spring:
   application:
-    name: lien-mstemplate
+    name: lien-gateway
   profiles:
     active: ${RUN_ENV}
   cloud:

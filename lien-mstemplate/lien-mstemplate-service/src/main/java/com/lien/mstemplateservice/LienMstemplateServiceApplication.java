@@ -1,12 +1,12 @@
-package com.lien.mstemplateapi;
+package com.lien.mstemplateservice;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class MstemplateApiApplication {
+public class LienMstemplateServiceApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(MstemplateApiApplication.class, args);
+        SpringApplication.run(LienMstemplateServiceApplication.class, args);
     }
 }
