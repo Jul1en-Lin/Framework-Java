@@ -60,6 +60,9 @@ public class JsonUtil {
         }
     }
 
+    /**
+     * 将JSON字符串转换为对象
+     */
     public static <T> T string2Obj(String str, Class<T> clazz) {
         if (!StringUtils.hasLength(str) || clazz == null) return null;
         try {
@@ -69,7 +72,5 @@ public class JsonUtil {
             log.error("JSON字符串转换为对象时发生异常", e);
             return null;
         }
-
-
     }
 }
