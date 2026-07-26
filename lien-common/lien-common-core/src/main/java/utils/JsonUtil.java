@@ -1,15 +1,18 @@
 package utils;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.MapperFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
 import java.text.SimpleDateFormat;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 @Slf4j
 public class JsonUtil {
@@ -17,18 +20,15 @@ public class JsonUtil {
     private static ObjectMapper OBJECT_MAPPER;
 
     static {
-        OBJECT_MAPPER = JsonMapper.builder().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+        OBJECT_MAPPER = JsonMapper.builder()
+                .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
                 .configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false)
                 .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false)
                 .configure(DeserializationFeature.FAIL_ON_INVALID_SUBTYPE, false)
-                //不适用默认的dateTime进行序列化,使用JSR310的LocalDateTimeSerializer
                 .configure(SerializationFeature.WRITE_DATE_KEYS_AS_TIMESTAMPS, false)
                 .configure(MapperFeature.USE_ANNOTATIONS, false)
-                //重点,这是序列化LocalDateTIme和LocalDate的必要配置,由Jackson-data-JSR310实现
                 .addModule(new JavaTimeModule())
-                //所有的日期格式都统一为以下的样式，即yyyy-MM-dd HH:mm:ss
                 .defaultDateFormat(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss"))
-                // 只针对非空的值进行序列化
                 .serializationInclusion(JsonInclude.Include.NON_NULL)
                 .build();
     }
@@ -40,7 +40,7 @@ public class JsonUtil {
         if (obj == null) return null;
         try {
             return obj instanceof String ? (String) obj : OBJECT_MAPPER.writeValueAsString(obj);
-        } catch (Exception e) {
+        } catch (JsonProcessingException e) {
             log.error("对象转换为JSON字符串时发生异常", e);
             return null;
         }
@@ -54,21 +54,65 @@ public class JsonUtil {
         try {
             return obj instanceof String ? (String) obj :
                     OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(obj);
-        } catch (Exception e) {
+        } catch (JsonProcessingException e) {
             log.error("对象转换为格式化的JSON字符串时发生异常", e);
             return null;
         }
     }
 
     /**
-     * 将JSON字符串转换为对象
+     * JSON字符串转换为对象
      */
     public static <T> T string2Obj(String str, Class<T> clazz) {
         if (!StringUtils.hasLength(str) || clazz == null) return null;
         try {
             return clazz.equals(String.class) ? (T) str :
                     OBJECT_MAPPER.readValue(str, clazz);
-        } catch (Exception e) {
+        } catch (JsonProcessingException e) {
+            log.error("JSON字符串转换为对象时发生异常", e);
+            return null;
+        }
+    }
+
+    /**
+     * 泛型擦除
+     * JSON字符串转换为自定义对象的List
+     */
+    public static <T> List<T> string2List(String str, Class<T> clazz) {
+        if (!StringUtils.hasLength(str) || clazz == null) return null;
+        JavaType javaType = OBJECT_MAPPER.getTypeFactory().constructParametricType(List.class, clazz);
+        try {
+            return OBJECT_MAPPER.readValue(str, javaType);
+        } catch (JsonProcessingException e) {
+            log.error("JSON字符串转换为对象列表时发生异常", e);
+            return null;
+        }
+    }
+
+    /**
+     * 泛型擦除
+     * JSON字符串转换为自定义对象的Map
+     */
+    public static <T> Map<String,T> string2Map(String str, Class<T> clazz) {
+        if (!StringUtils.hasLength(str) || clazz == null) return null;
+        JavaType javaType = OBJECT_MAPPER.getTypeFactory().constructMapType(LinkedHashMap.class, String.class, clazz);
+        try {
+            return OBJECT_MAPPER.readValue(str, javaType);
+        } catch (JsonProcessingException e) {
+            log.error("JSON字符串转换为对象列表时发生异常", e);
+            return null;
+        }
+    }
+
+    /**
+     * 泛型擦除嵌套
+     * JSON字符串转换为嵌套的自定义对象，如 List<Map<String, T>> 或 Map<String, List<T>>
+     */
+    public static <T> T string2Obj(String str, TypeReference<T> typeRef) {
+        if (!StringUtils.hasLength(str) || typeRef == null) return null;
+        try {
+            return OBJECT_MAPPER.readValue(str, typeRef);
+        } catch (JsonProcessingException e) {
             log.error("JSON字符串转换为对象时发生异常", e);
             return null;
         }
