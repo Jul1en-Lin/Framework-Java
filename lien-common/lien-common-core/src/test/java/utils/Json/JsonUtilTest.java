@@ -1,15 +1,15 @@
-package utils;
+package utils.Json;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import org.junit.jupiter.api.Test;
+import utils.JsonUtil;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class JsonUtilTest {
 
@@ -215,6 +215,19 @@ class JsonUtilTest {
         assertNull(JsonUtil.string2Obj(null, new TypeReference<List<User>>() {
         }));
         assertNull(JsonUtil.string2Obj("{}", (TypeReference<List<User>>) null));
+    }
+
+    @Test
+    void shouldGetLinkedHashMapWithoutTypeInfo() {
+        String json = "[{\"name\":\"Julien\",\"age\":18}]";
+
+        // 直接传 List.class，Jackson 不知道元素类型
+        List result = JsonUtil.string2Obj(json, List.class);
+
+        // 拿到的不是 User，而是 LinkedHashMap
+        assertFalse(result.get(0) instanceof User);
+        assertTrue(result.get(0) instanceof LinkedHashMap);
+        System.out.println(result);
     }
 
     static class User {
