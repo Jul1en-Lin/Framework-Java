@@ -23,6 +23,7 @@ import java.util.Map;
 public class JsonUtil {
 
     private static ObjectMapper OBJECT_MAPPER;
+    private JsonUtil() {} // 私有化构造函数，防止实例化
 
     // OBJECT_MAPPER 的各项配置
     static {

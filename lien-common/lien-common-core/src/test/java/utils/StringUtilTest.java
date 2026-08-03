@@ -11,20 +11,20 @@ class StringUtilTest {
 
     @Test
     void shouldMatchUrlAgainstAntPathRule() {
-        assertTrue(StringUtil.matchesUrlRule(
+        assertTrue(StringUtil.matchesUrl(
                 "https://example.com/api/users/123",
                 "https://example.com/api/users/*"));
-        assertFalse(StringUtil.matchesUrlRule(
+        assertFalse(StringUtil.matchesUrl(
                 "https://example.com/api/orders/123",
                 "https://example.com/api/users/*"));
     }
 
     @Test
     void shouldReturnFalseWhenUrlOrRuleIsBlank() {
-        assertFalse(StringUtil.matchesUrlRule(null, "^https://example\\.com$"));
-        assertFalse(StringUtil.matchesUrlRule("  ", "^https://example\\.com$"));
-        assertFalse(StringUtil.matchesUrlRule("https://example.com", null));
-        assertFalse(StringUtil.matchesUrlRule("https://example.com", "  "));
+        assertFalse(StringUtil.matchesUrl(null, "https://example.com"));
+        assertFalse(StringUtil.matchesUrl("  ", "https://example.com"));
+        assertFalse(StringUtil.matchesUrl("https://example.com", null));
+        assertFalse(StringUtil.matchesUrl("https://example.com", "  "));
     }
 
     @Test
@@ -33,13 +33,13 @@ class StringUtilTest {
                 "https://example.com/api/users/*",
                 "https://example.com/api/orders/**");
 
-        assertTrue(StringUtil.matchesAnyUrlRule("https://example.com/api/orders/456", rules));
-        assertFalse(StringUtil.matchesAnyUrlRule("https://example.com/api/products/456", rules));
+        assertTrue(StringUtil.matchesListUrl("https://example.com/api/orders/456", rules));
+        assertFalse(StringUtil.matchesListUrl("https://example.com/api/products/456", rules));
     }
 
     @Test
     void shouldReturnFalseWhenRulesAreNullOrEmpty() {
-        assertFalse(StringUtil.matchesAnyUrlRule("https://example.com", null));
-        assertFalse(StringUtil.matchesAnyUrlRule("https://example.com", List.of()));
+        assertFalse(StringUtil.matchesListUrl("https://example.com", null));
+        assertFalse(StringUtil.matchesListUrl("https://example.com", List.of()));
     }
 }

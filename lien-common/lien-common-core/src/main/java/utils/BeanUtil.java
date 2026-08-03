@@ -9,6 +9,7 @@ import java.util.function.Supplier;
 
 public class BeanUtil extends BeanUtils{
 
+    private BeanUtil() {} // 私有化构造函数，防止实例化
     public static <S,T> List<T> copyListProperties(List<S> source, Supplier<T> target) {
         if (source == null || source.isEmpty()) {
             return null;

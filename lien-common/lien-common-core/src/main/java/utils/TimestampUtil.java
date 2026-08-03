@@ -15,8 +15,7 @@ import java.time.temporal.ChronoUnit;
 @Slf4j
 public final class TimestampUtil {
 
-    private TimestampUtil() {
-    }
+    private TimestampUtil() {} // 私有化构造函数，防止实例化
 
     /**
      * 获取当前毫秒级时间戳。

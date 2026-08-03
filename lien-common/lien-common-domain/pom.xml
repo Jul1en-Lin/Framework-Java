@@ -5,21 +5,23 @@
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>com.lien</groupId>
-        <artifactId>Framework-Java</artifactId>
+        <artifactId>lien-common</artifactId>
         <version>0.0.1-SNAPSHOT</version>
     </parent>
 
-    <artifactId>lien-common</artifactId>
-    <packaging>pom</packaging>
-    <modules>
-        <module>lien-common-core</module>
-        <module>lien-common-domain</module>
-    </modules>
+    <artifactId>lien-common-domain</artifactId>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+        </dependency>
+    </dependencies>
 
 </project>
