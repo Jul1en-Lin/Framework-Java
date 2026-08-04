@@ -19,6 +19,12 @@
     </properties>
 
     <dependencies>
+        <dependency>
+            <groupId>com.lien</groupId>
+            <artifactId>lien-common-security</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <!-- SpringCloud Alibaba Nacos -->
         <dependency>
             <groupId>com.alibaba.cloud</groupId>
