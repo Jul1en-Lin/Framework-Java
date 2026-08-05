@@ -14,8 +14,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.web.server.ServerWebExchange;
-import org.springframework.web.servlet.NoHandlerFoundException;
 import reactor.core.publisher.Mono;
+import org.springframework.web.servlet.NoHandlerFoundException;
 
 
 /**
@@ -49,7 +49,7 @@ public class GatewayExceptionHandler implements ErrorWebExceptionHandler {
             retCode = EnumCode.SERVICE_NOT_FOUND.getCode();
             retMsg = EnumCode.SERVICE_NOT_FOUND.getMsg();
         } else if (ex instanceof ServiceException) {
-            retMsg = ex.getMessage();
+            retMsg = ((ServiceException) ex).getMsg();
             retCode = ((ServiceException) ex).getCode();
         }
 

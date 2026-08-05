@@ -32,7 +32,7 @@ public class GlobalExceptionHandler {
                                            HttpServletResponse response) {
         log.error("请求地址'{}'发生业务异常", request.getRequestURI(), e);
         setResponseCode(response, e.getCode());
-        return Result.fail(e.getCode(), e.getMessage());
+        return Result.fail(e.getCode(), e.getMsg());
     }
 
     /**

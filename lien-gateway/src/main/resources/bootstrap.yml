@@ -1,6 +1,9 @@
 server:
   port: 18080
 spring:
+  # Gateway 使用 WebFlux；保留 Servlet 依赖时要采用 Reactive 应用类型。
+  main:
+    web-application-type: reactive
   application:
     name: lien-gateway
   profiles:
