@@ -5,15 +5,22 @@ import domain.Result;
 import domain.exception.ServiceException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.http.HttpStatus;
+import org.springframework.util.CollectionUtils;
+import org.springframework.validation.ObjectError;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.NoHandlerFoundException;
+
+import java.util.List;
+import java.util.stream.Collectors;
 
 @AutoConfiguration
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
@@ -111,4 +118,56 @@ public class GlobalExceptionHandler {
 
         return Integer.parseInt(codeText.substring(0, 3));
     }
+
+    //--------------------- 参数校验异常处理 Spring-validation ---------------------
+
+    /**
+     * 参数校验异常
+     *
+     * @param e 异常信息
+     * @param request 请求
+     * @param response 响应
+     * @return 异常报文
+     */
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public Result<?> handleMethodArgumentNotValidException(MethodArgumentNotValidException e, HttpServletRequest request,
+                                       HttpServletResponse response) {
+        String requestURI = request.getRequestURI();
+        log.error("请求地址'{}',发生参数校验异常", requestURI, e);
+        setResponseCode(response, EnumCode.INVALID_PARA.getCode());
+        // 只提取提取 default message 字段
+        String defaultMsg = getDefaultMessages(e);
+        return Result.fail(EnumCode.INVALID_PARA.getCode(), defaultMsg);
+    }
+
+    /**
+     * 提取异常的 Default Message 字段并拼接成字符串（可能有多个异常）
+     */
+    private String getDefaultMessages(MethodArgumentNotValidException e) {
+        List<ObjectError> allErrors = e.getAllErrors();
+        if (CollectionUtils.isEmpty(allErrors)) {
+            return "";
+        }
+        return allErrors.stream().map(ObjectError::getDefaultMessage).collect(Collectors.joining(", "));
+    }
+
+    /**
+     * 参数校验异常
+     * @param e 异常信息
+     * @param request 请求
+     * @param response 响应
+     * @return 异常报文
+     */
+    @ExceptionHandler({ConstraintViolationException.class})
+    public Result<Void> handleConstraintViolationException(ConstraintViolationException e, HttpServletRequest request,
+                                                      HttpServletResponse response) {
+        String requestURI = request.getRequestURI();
+        log.error("请求地址'{}', 发生参数校验异常",requestURI, e);
+        setResponseCode(response,EnumCode.INVALID_PARA.getCode());
+        // 该异常的 message 字段已包含关键信息，直接返回即可
+        String message = e.getMessage();
+        return Result.fail(EnumCode.INVALID_PARA.getCode(),message);
+    }
+
+    //--------------------------------------------------------------
 }
