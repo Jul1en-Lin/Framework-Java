@@ -148,6 +148,7 @@ public class GlobalExceptionHandler {
         if (CollectionUtils.isEmpty(allErrors)) {
             return "";
         }
+        // 使用逗号分隔符拼接多个异常信息
         return allErrors.stream().map(ObjectError::getDefaultMessage).collect(Collectors.joining(", "));
     }
 
