@@ -2,6 +2,7 @@ package handler;
 
 import domain.EnumCode;
 import domain.Result;
+import domain.constants.CommonConstants;
 import domain.exception.ServiceException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -146,10 +147,10 @@ public class GlobalExceptionHandler {
     private String getDefaultMessages(MethodArgumentNotValidException e) {
         List<ObjectError> allErrors = e.getAllErrors();
         if (CollectionUtils.isEmpty(allErrors)) {
-            return "";
+            return CommonConstants.EMPTY_STR;
         }
         // 使用逗号分隔符拼接多个异常信息
-        return allErrors.stream().map(ObjectError::getDefaultMessage).collect(Collectors.joining(", "));
+        return allErrors.stream().map(ObjectError::getDefaultMessage).collect(Collectors.joining(CommonConstants.DEFAULT_DELIMITER));
     }
 
     /**

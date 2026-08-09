@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.fasterxml.jackson.datatype.jsr310.deser.LocalDateTimeDeserializer;
 import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateTimeSerializer;
+import domain.constants.CommonConstants;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
 import java.text.SimpleDateFormat;
@@ -37,11 +38,11 @@ public class JsonUtil {
                 .addModule(new JavaTimeModule())
                 .addModule(new SimpleModule()
                         .addSerializer(LocalDateTime.class,
-                                new LocalDateTimeSerializer(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
+                                new LocalDateTimeSerializer(DateTimeFormatter.ofPattern(CommonConstants.STANDARD_FORMAT)))
                         .addDeserializer(LocalDateTime.class,
-                                new LocalDateTimeDeserializer(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
+                                new LocalDateTimeDeserializer(DateTimeFormatter.ofPattern(CommonConstants.STANDARD_FORMAT)))
                 )
-                .defaultDateFormat(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss"))
+                .defaultDateFormat(new SimpleDateFormat(CommonConstants.STANDARD_FORMAT))
                 .serializationInclusion(JsonInclude.Include.NON_NULL)
                 .build();
     }
