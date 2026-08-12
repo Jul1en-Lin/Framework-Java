@@ -21,6 +21,11 @@
     <dependencies>
         <dependency>
             <groupId>com.lien</groupId>
+            <artifactId>lien-common-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.lien</groupId>
             <artifactId>lien-common-security</artifactId>
             <version>${project.version}</version>
         </dependency>
