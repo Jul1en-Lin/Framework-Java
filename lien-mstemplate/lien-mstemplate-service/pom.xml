@@ -30,6 +30,12 @@
             <version>${project.version}</version>
         </dependency>
 
+        <dependency>
+            <groupId>com.lien</groupId>
+            <artifactId>lien-common-redis</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <!-- SpringCloud Alibaba Nacos -->
         <dependency>
             <groupId>com.alibaba.cloud</groupId>

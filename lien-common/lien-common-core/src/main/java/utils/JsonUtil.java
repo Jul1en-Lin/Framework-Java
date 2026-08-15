@@ -28,7 +28,15 @@ public class JsonUtil {
 
     // OBJECT_MAPPER 的各项配置
     static {
-        OBJECT_MAPPER = JsonMapper.builder()
+        OBJECT_MAPPER = createObjectMapper();
+    }
+
+    public static ObjectMapper getObjectMapper() {
+        return createObjectMapper();
+    }
+
+    private static ObjectMapper createObjectMapper() {
+        return JsonMapper.builder()
                 .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
                 .configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false)
                 .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false)

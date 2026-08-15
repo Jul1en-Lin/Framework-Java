@@ -20,10 +20,10 @@ spring:
         server-addr: ${NACOS_ADDR}
         file-extension: yaml
         # 共享配置
-#        shared-configs:
+        shared-configs:
+          - data-id: share-redis-${spring.profiles.active}.${spring.cloud.nacos.config.file-extension}
+            refresh: true
 #          - data-id: share-common-${spring.profiles.active}.${spring.cloud.nacos.config.file-extension}
-#            refresh: true
-#          - data-id: share-redis-${spring.profiles.active}.${spring.cloud.nacos.config.file-extension}
 #            refresh: true
 #          - data-id: share-mysql-${spring.profiles.active}.${spring.cloud.nacos.config.file-extension}
 #            refresh: true

@@ -1,14 +1,18 @@
 package service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import utils.JsonUtil;
 
 import java.util.concurrent.TimeUnit;
 
+@AutoConfiguration
 public class RedisService {
 
+    @Autowired
     private RedisTemplate<String, Object> redisTemplate;
 
     // *********************** 操作String类型 **************************
