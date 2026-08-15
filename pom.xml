@@ -38,6 +38,7 @@
         <java.version>17</java.version>
         <spring-cloud.version>2022.0.0</spring-cloud.version>
         <spring-cloud-alibaba.version>2022.0.0.0</spring-cloud-alibaba.version>
+        <redisson.version>3.19.1</redisson.version>
     </properties>
 
     <dependencyManagement>
@@ -58,6 +59,13 @@
                 <version>${spring-cloud-alibaba.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+
+            <!-- Redisson 3.19.x matches Spring Boot 3.0.x -->
+            <dependency>
+                <groupId>org.redisson</groupId>
+                <artifactId>redisson-spring-boot-starter</artifactId>
+                <version>${redisson.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

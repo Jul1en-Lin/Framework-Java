@@ -15,6 +15,7 @@
         <module>lien-common-core</module>
         <module>lien-common-domain</module>
         <module>lien-common-security</module>
+        <module>lien-common-redis</module>
     </modules>
 
     <properties>
