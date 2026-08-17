@@ -1,5 +1,3 @@
-server:
-  port: 18085
 spring:
   application:
     name: lien-mstemplate
