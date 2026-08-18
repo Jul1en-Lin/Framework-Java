@@ -34,6 +34,12 @@ public class RedisConfig {
         return template;
     }
 
+    /**
+     * 获取用于 Redis 序列化的 ObjectMapper。
+     * 使用与 JsonUtil 同一套配置，以确保序列化/反序列化行为一致。
+     * 例如 JsonUtil 配置了 LocalDateTime 的序列化格式（yyyy-MM-dd HH:mm:ss），
+     * 如果 Redis 使用不同的 ObjectMapper 配置，会导致存入的日期格式和读取时解析的格式不匹配。
+     */
     private ObjectMapper objectMapper() {
         return JsonUtil.getObjectMapper();
     }
