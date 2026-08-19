@@ -12,6 +12,7 @@ import utils.JsonUtil;
 
 import java.time.LocalDateTime;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -177,9 +178,58 @@ public class RedisController {
 //                removedOne, afterDeleteOne.size(), JsonUtil.Obj2string(afterDeleteOne));
 //
 //        // 5. deleteMember: 可变参数批量删除剩余元素
-//        Long batchRemoved = redisService.deleteMember(key, user1, user3);
+//        Long batchRemoved = redisService.deleteMember(key, user1, user
+//        3);
 //        Set<RedisUser> afterBatchDelete = redisService.getCacheSet(key, setTypeRef);
 //        log.info("[deleteMember] 批量删除, 实际删除个数(应为2): {}, 集合大小(应为0): {}, 全量: {}",
 //                batchRemoved, afterBatchDelete.size(), JsonUtil.Obj2string(afterBatchDelete));
+    }
+
+    @GetMapping("/zset")
+    public void testZSet() {
+        String key = "redis:user:zset";
+        TypeReference<LinkedHashSet<RedisUser>> zsetTypeRef = new TypeReference<LinkedHashSet<RedisUser>>() {};
+
+        // 每次测试前先清空，避免历史数据干扰：
+        // 取出全部历史成员，逐个删除（delMemberZSet 仅支持单元素删除）
+        Set<RedisUser> history = redisService.getCacheZSet(key, zsetTypeRef);
+        if (history != null && !history.isEmpty()) {
+            history.forEach(member -> redisService.delMemberZSet(key, member));
+        }
+        log.info("[zset-清空] 清空后集合(应为空): {}",
+                JsonUtil.Obj2string(redisService.getCacheZSet(key, zsetTypeRef)));
+
+        // 1. addMemberZSet: 添加3个元素，score分别为 10、30、20
+        RedisUser user1 = new RedisUser(1L, "张三", 20, LocalDateTime.now());
+        RedisUser user2 = new RedisUser(2L, "李四", 30, LocalDateTime.now());
+        RedisUser user3 = new RedisUser(3L, "王五", 40, LocalDateTime.now());
+        Boolean add1 = redisService.addMemberZSet(key, user1, 10);
+        Boolean add2 = redisService.addMemberZSet(key, user2, 30);
+        Boolean add3 = redisService.addMemberZSet(key, user3, 20);
+        log.info("[addMemberZSet] 添加3个元素, 返回(应均为true): {}/{}/{}, 升序全量(应按score: 张三10<王五20<李四30): {}",
+                add1, add2, add3, JsonUtil.Obj2string(redisService.getCacheZSet(key, zsetTypeRef)));
+
+        // 2. addMemberZSet: 重复添加已有元素'张三'，score更新为40，返回false，排序位置移到最后
+        Boolean addDuplicate = redisService.addMemberZSet(key, user1, 40);
+        log.info("[addMemberZSet] 重复添加'张三'并更新score为40, 返回(应为false): {}, 升序全量('张三'应排最后): {}",
+                addDuplicate, JsonUtil.Obj2string(redisService.getCacheZSet(key, zsetTypeRef)));
+
+        // 3. getCacheZSetDesc: 降序获取全量
+        Set<RedisUser> descSet = redisService.getCacheZSetDesc(key, zsetTypeRef);
+        log.info("[getCacheZSetDesc] 降序全量('张三'40应排最前): {}", JsonUtil.Obj2string(descSet));
+
+        // 4. getCacheZSet(key, typeRef, start, end): 升序取下标[0,1]，即score最低的2个
+        Set<RedisUser> rangeSet = redisService.getCacheZSet(key, zsetTypeRef, 0, 1);
+        log.info("[getCacheZSet-range] 升序下标[0,1](应为'王五'20、'李四'30): {}", JsonUtil.Obj2string(rangeSet));
+
+        // 5. removeZSetByScore: 删除score在[20, 30]闭区间的元素（'王五'、'李四'）
+        Long removedByScore = redisService.removeZSetByScore(key, 20, 30);
+        log.info("[removeZSetByScore] 删除score[20,30]区间, 实际删除个数(应为2): {}, 剩余(应只剩'张三'): {}",
+                removedByScore, JsonUtil.Obj2string(redisService.getCacheZSet(key, zsetTypeRef)));
+
+        // 6. delMemberZSet: 删除指定元素
+        Long removed = redisService.delMemberZSet(key, user1);
+        log.info("[delMemberZSet] 删除'张三', 实际删除个数(应为1): {}, 剩余(应为空): {}",
+                removed, JsonUtil.Obj2string(redisService.getCacheZSet(key, zsetTypeRef)));
     }
 }

@@ -7,9 +7,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import utils.JsonUtil;
 
-import java.util.Collection;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 @AutoConfiguration
@@ -307,4 +305,77 @@ public class RedisService {
         return JsonUtil.string2Obj(JsonUtil.Obj2string(data), typeReference);
     }
 
+
+    // *********************** 操作ZSet类型 **************************
+
+    /**
+     * 添加元素
+     * @param key key
+     * @param value 值
+     * @param score 权重
+     */
+    public Boolean addMemberZSet(String key, Object value, double score) {
+        return redisTemplate.opsForZSet().add(key, value, score);
+    }
+
+    /**
+     * 删除元素
+     * @param key    key
+     * @param value  值
+     * @return 实际删除的元素个数
+     */
+    public Long delMemberZSet(String key, Object value) {
+        return redisTemplate.opsForZSet().remove(key, value);
+    }
+
+    /**
+     * 根据排序分值删除
+     *
+     * @param key key
+     * @param minScore 最小分
+     * @param maxScore 最大分
+     * @return 实际删除的元素个数
+     */
+    public Long removeZSetByScore(final String key, double minScore, double maxScore) {
+        return redisTemplate.opsForZSet().removeRangeByScore(key, minScore, maxScore);
+    }
+
+
+    /**
+     * 获取有序集合数据（支持复杂的泛型嵌套）
+     *
+     * @param key key信息
+     * @param typeReference 类型模板
+     * @return 有序集合
+     * @param <T> 对象类型
+     */
+    public <T> Set<T> getCacheZSet(final String key, TypeReference<LinkedHashSet<T>> typeReference) {
+        Set data = redisTemplate.opsForZSet().range(key, 0, -1);
+        return JsonUtil.string2Obj(JsonUtil.Obj2string(data), typeReference);
+    }
+
+    /**
+     * 降序获取有序集合（支持复杂的泛型嵌套）
+     * @param key key信息
+     * @param typeReference 类型模板
+     * @return 降序的有序集合
+     * @param <T> 对象类型信息
+     */
+    public <T> Set<T> getCacheZSetDesc(final String key, TypeReference<LinkedHashSet<T>> typeReference) {
+        Set data = redisTemplate.opsForZSet().reverseRange(key, 0, -1);
+        return JsonUtil.string2Obj(JsonUtil.Obj2string(data), typeReference);
+    }
+
+
+    /**
+     * 获取指定范围的有序集合（支持复杂的泛型嵌套）
+     * @param key key信息
+     * @param typeReference 类型模板
+     * @return 降序的有序集合
+     * @param <T> 对象类型信息
+     */
+    public <T> Set<T> getCacheZSet(final String key, TypeReference<LinkedHashSet<T>> typeReference, long start, long end) {
+        Set data = redisTemplate.opsForZSet().range(key, start, end);
+        return JsonUtil.string2Obj(JsonUtil.Obj2string(data), typeReference);
+    }
 }
