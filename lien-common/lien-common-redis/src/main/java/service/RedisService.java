@@ -9,6 +9,7 @@ import utils.JsonUtil;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 @AutoConfiguration
@@ -248,6 +249,62 @@ public class RedisService {
      */
     public long getCacheListSize(final String key) {
         return redisTemplate.opsForList().size(key);
+    }
+
+    // *********************** 操作Set类型 **************************
+
+    /**
+     * set添加元素（批量添加或添加单个元素）
+     * <p>
+     * Object... 为可变参数（varargs），编译后等价于 Object[] 数组，调用方式：
+     * <pre>
+     * addMember(key, "a")                        // 添加单个元素
+     * addMember(key, "a", "b", "c")              // 批量添加多个元素
+     * addMember(key, new String[]{"a", "b"})     // 直接传数组（会被展开为多个元素）
+     * </pre>
+     * 注意1：传入集合（如 List）或基本类型数组（如 int[]）会被当作"单个元素"存入，
+     *        集合需先展开为数组：addMember(key, list.toArray())
+     * 注意2：至少传1个元素；一个都不传（addMember(key)）时底层发出无成员的 SADD，
+     *        Redis 会报错 ERR wrong number of arguments
+     *
+     * @param key    key
+     * @param member 元素信息（可变参数，可传1个或多个）
+     * @return 实际新增的元素个数（Set 中已存在的重复元素不计入）
+     */
+    public Long addMember(final String key, Object... member) {
+        return redisTemplate.opsForSet().add(key, member);
+    }
+
+    /**
+     * 删除元素（批量删除或删除单个元素）
+     * <p>
+     * Object... 为可变参数（varargs），用法同 {@link #addMember(String, Object...)}：
+     * <pre>
+     * deleteMember(key, "a")           // 删除单个元素
+     * deleteMember(key, "a", "b")      // 批量删除多个元素
+     * </pre>
+     * 注意：传入集合（如 List）会被当作"单个元素"处理，需先展开：deleteMember(key, list.toArray())
+     *       至少传1个元素；一个都不传时 Redis 会报错 ERR wrong number of arguments
+     *
+     * @param key    key
+     * @param member 待删除的元素信息（可变参数，可传1个或多个）
+     * @return 实际删除的元素个数（Set 中不存在的元素不计入）
+     */
+    public Long deleteMember(final String key, Object... member) {
+        return redisTemplate.opsForSet().remove(key, member);
+    }
+
+
+    /**
+     * 获取set数据（支持复杂的泛型嵌套）
+     * @param key key
+     * @param typeReference 类型模板
+     * @return set数据
+     * @param <T> 类型信息
+     */
+    public <T> Set<T> getCacheSet(final String key, TypeReference<Set<T>> typeReference) {
+        Set data = redisTemplate.opsForSet().members(key);
+        return JsonUtil.string2Obj(JsonUtil.Obj2string(data), typeReference);
     }
 
 }

@@ -13,6 +13,7 @@ import utils.JsonUtil;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -131,5 +132,54 @@ public class RedisController {
         redisService.removeForAllList(key);
         log.info("[removeForAllList] 清空后长度(应为0): {}, 全量: {}",
                 redisService.getCacheListSize(key), JsonUtil.Obj2string(redisService.getCacheList(key, RedisUser.class)));
+    }
+
+    @GetMapping("/set")
+    public void testSet() {
+        String key = "redis:user:set";
+        TypeReference<Set<RedisUser>> setTypeRef = new TypeReference<Set<RedisUser>>() {};
+
+        // 每次测试前先清空，避免历史数据干扰：
+        // 取出全部历史成员，再批量删除（集合需先 toArray() 展开后再传入可变参数，
+        // 直接传集合会被当成"单个元素"处理）
+        Set<RedisUser> history = redisService.getCacheSet(key, setTypeRef);
+        if (history != null && !history.isEmpty()) {
+            redisService.deleteMember(key, history.toArray());
+        }
+        log.info("[set-清空] 清空后集合(应为空): {}",
+                JsonUtil.Obj2string(redisService.getCacheSet(key, setTypeRef)));
+
+        // 1. addMember: 添加单个元素
+        RedisUser user1 = new RedisUser(1L, "张三", 20, LocalDateTime.now());
+        Long addedOne = redisService.addMember(key, user1);
+        log.info("[addMember] 添加单个元素, 实际新增个数(应为1): {}, 集合: {}",
+                addedOne, JsonUtil.Obj2string(redisService.getCacheSet(key, setTypeRef)));
+
+        // 2. addMember: 可变参数批量添加多个元素
+        RedisUser user2 = new RedisUser(2L, "李四", 30, LocalDateTime.now());
+        RedisUser user3 = new RedisUser(3L, "王五", 40, LocalDateTime.now());
+        Long batchAdded = redisService.addMember(key, user2, user3);
+        Set<RedisUser> afterBatchAdd = redisService.getCacheSet(key, setTypeRef);
+        log.info("[addMember] 批量添加, 实际新增个数(应为2): {}, 集合大小(应为3): {}, 全量: {}",
+                batchAdded, afterBatchAdd.size(), JsonUtil.Obj2string(afterBatchAdd));
+
+        // 3. addMember: 添加重复元素（与user1序列化结果相同），Set 自动去重
+        // 返回值直接反映去重结果，无需额外读取集合
+        Long duplicateAdded = redisService.addMember(key, user1);
+        Set<RedisUser> afterDuplicateAdd = redisService.getCacheSet(key, setTypeRef);
+        log.info("[addMember] 重复添加'张三', 实际新增个数(应为0，去重直接可见): {}, 集合大小(应仍为3): {}, 全量: {}",
+                duplicateAdded, afterDuplicateAdd.size(), JsonUtil.Obj2string(afterDuplicateAdd));
+
+//        // 4. deleteMember: 删除单个元素
+//        Long removedOne = redisService.deleteMember(key, user2);
+//        Set<RedisUser> afterDeleteOne = redisService.getCacheSet(key, setTypeRef);
+//        log.info("[deleteMember] 删除'李四', 实际删除个数(应为1): {}, 集合大小(应为2): {}, 全量: {}",
+//                removedOne, afterDeleteOne.size(), JsonUtil.Obj2string(afterDeleteOne));
+//
+//        // 5. deleteMember: 可变参数批量删除剩余元素
+//        Long batchRemoved = redisService.deleteMember(key, user1, user3);
+//        Set<RedisUser> afterBatchDelete = redisService.getCacheSet(key, setTypeRef);
+//        log.info("[deleteMember] 批量删除, 实际删除个数(应为2): {}, 集合大小(应为0): {}, 全量: {}",
+//                batchRemoved, afterBatchDelete.size(), JsonUtil.Obj2string(afterBatchDelete));
     }
 }
