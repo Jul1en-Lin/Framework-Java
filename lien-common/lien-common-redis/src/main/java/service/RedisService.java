@@ -16,6 +16,73 @@ public class RedisService {
     @Autowired
     private RedisTemplate<String, Object> redisTemplate;
 
+    // *********************** 操作常用方法 **************************
+
+
+    public Boolean expire(final String key, final long timeout) {
+        return redisTemplate.expire(key, timeout, TimeUnit.SECONDS);
+    }
+
+    // 设置数据有效时间（可指定时间单位）
+    public Boolean expire(final String key, final long timeout, final TimeUnit timeUnit) {
+        return redisTemplate.expire(key, timeout, timeUnit);
+    }
+
+    /**
+     * 获取有效时间
+     *
+     * @param key Redis键
+     * @return 有效时间
+     */
+    public Long getExpire(final String key) {
+        return redisTemplate.getExpire(key);
+    }
+
+    /**
+     * 判断 key 是否存在
+     *
+     * @param key 键
+     */
+    public Boolean hasKey(String key) {
+        return redisTemplate.hasKey(key);
+    }
+
+    /**
+     * 查找 Redis 中匹配的键，需手拼字符串
+     * TODO：需加一个 key 构造工具，避免手拼字符串
+     * @param pattern 要查找的键的模式
+     * @return 键列表
+     */
+    public Collection<String> keys(final String pattern) {
+        return redisTemplate.keys(pattern);
+    }
+
+    /**
+     * 重命名 key
+     */
+    public void renameKey(String oldKey, String newKey) {
+        redisTemplate.rename(oldKey, newKey);
+    }
+
+    /**
+     * 删除单个数据
+     *
+     * @param key 缓存的键值
+     */
+    public Boolean deleteObject(final String key) {
+        return redisTemplate.delete(key);
+    }
+
+    /**
+     * 删除多个数据
+     *
+     * @param collection 多个数据对应的缓存的键值
+     * @return 删除的元素数量
+     */
+    public Long deleteObject(final Collection collection) {
+        return redisTemplate.delete(collection);
+    }
+
     // *********************** 操作String类型 **************************
     // ******* 存储缓存对象 *******
 
