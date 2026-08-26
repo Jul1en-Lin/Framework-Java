@@ -12,6 +12,7 @@ import utils.JsonUtil;
 
 import java.time.LocalDateTime;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -231,5 +232,59 @@ public class RedisController {
         Long removed = redisService.delMemberZSet(key, user1);
         log.info("[delMemberZSet] 删除'张三', 实际删除个数(应为1): {}, 剩余(应为空): {}",
                 removed, JsonUtil.Obj2string(redisService.getCacheZSet(key, zsetTypeRef)));
+    }
+
+    @GetMapping("/common")
+    public void testCommon() {
+        String key1 = "redis:common:1";
+        String key2 = "redis:common:2";
+        String renamedKey = "redis:common:rename";
+
+        // 每次测试前先清空，避免历史数据干扰
+        redisService.deleteObject(Arrays.asList(key1, key2, renamedKey));
+
+        // 0. 准备测试数据
+        RedisUser user = new RedisUser(1L, "张三", 20, LocalDateTime.now());
+        redisService.setCacheObject(key1, user);
+        redisService.setCacheObject(key2, user);
+        log.info("[common-准备] 写入2个测试key完成: {}, {}", key1, key2);
+
+        // 1. hasKey: 判断 key 是否存在
+        Boolean exists = redisService.hasKey(key1);
+        Boolean notExists = redisService.hasKey("redis:common:not-exists");
+        log.info("[hasKey] 存在的key(应为true): {}, 不存在的key(应为false): {}", exists, notExists);
+
+        // 2. expire(key, timeout): 设置过期时间（默认单位秒）
+        Boolean expireResult = redisService.expire(key1, 60);
+        log.info("[expire] 设置60s过期(应为true): {}", expireResult);
+
+        // 3. getExpire: 获取剩余有效时间（秒）
+        Long ttl = redisService.getExpire(key1);
+        log.info("[getExpire] 剩余有效时间(应<=60且>0): {}s", ttl);
+
+        // 4. expire(key, timeout, timeUnit): 指定时间单位设置过期时间
+        Boolean expireWithUnit = redisService.expire(key2, 2, TimeUnit.MINUTES);
+        Long ttl2 = redisService.getExpire(key2);
+        log.info("[expire-timeUnit] 设置2分钟过期(应为true): {}, 剩余有效时间(应<=120且>60): {}s", expireWithUnit, ttl2);
+
+        // 5. keys: 按模式查找匹配的键
+        Collection<String> matchedKeys = redisService.keys("redis:common:*");
+        log.info("[keys] 模式'redis:common:*'匹配到的键(应为2个): {}", JsonUtil.Obj2string(matchedKeys));
+
+        // 6. renameKey: 重命名 key（重命名后原 key 的过期时间会保留）
+        redisService.renameKey(key2, renamedKey);
+        log.info("[renameKey] {} 重命名为 {}, 旧key是否存在(应为false): {}, 新key是否存在(应为true): {}, 新key剩余过期时间(应保留): {}s",
+                key2, renamedKey, redisService.hasKey(key2), redisService.hasKey(renamedKey), redisService.getExpire(renamedKey));
+
+        // 7. deleteObject(key): 删除单个数据
+        Boolean deletedOne = redisService.deleteObject(key1);
+        log.info("[deleteObject] 删除单个key(应为true): {}, 删除后是否存在(应为false): {}", deletedOne, redisService.hasKey(key1));
+
+        // 8. deleteObject(collection): 批量删除（先补回 key1、key2 再一次性删除3个）
+        redisService.setCacheObject(key1, user);
+        redisService.setCacheObject(key2, user);
+        Long deletedCount = redisService.deleteObject(Arrays.asList(key1, key2, renamedKey));
+        log.info("[deleteObject-batch] 批量删除3个key, 实际删除数量(应为3): {}, 剩余匹配'redis:common:*'的键(应为空): {}",
+                deletedCount, JsonUtil.Obj2string(redisService.keys("redis:common:*")));
     }
 }

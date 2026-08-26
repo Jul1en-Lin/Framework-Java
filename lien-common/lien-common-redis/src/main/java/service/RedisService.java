@@ -1,10 +1,12 @@
 package service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import utils.JsonUtil;
 
 import java.util.*;
@@ -444,5 +446,36 @@ public class RedisService {
     public <T> Set<T> getCacheZSet(final String key, TypeReference<LinkedHashSet<T>> typeReference, long start, long end) {
         Set data = redisTemplate.opsForZSet().range(key, start, end);
         return JsonUtil.string2Obj(JsonUtil.Obj2string(data), typeReference);
+    }
+
+    // ******************************** 简单 LUA 手写脚本 ***********************************
+
+    /**
+     * 删除指定值对应的 Redis 中的键值
+     *
+     * @name cad compare and delete
+     * @param key   缓存key
+     * @param value 值
+     * @return 是否完成了比较并删除
+     */
+    public boolean cad(String key, String value) {
+        if (key.contains(StringUtils.SPACE) || value.contains(StringUtils.SPACE)) {
+            return false;
+        }
+
+        /**
+         * 安全释放分布式锁 LUA 脚本（原子操作）
+         * <p>
+         *     避免多个线程抢占解锁
+         * </p>
+         * KEYS[1]：锁的 key
+         * ARGV[1]：加锁时设置的唯一标识（如 UUID）
+         * 逻辑：锁的值 == 自己的标识 → 是自己的锁，删除并返回 1；否则返回 0（不动别人的锁）
+         **/
+        String script = "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
+
+        // 通过 lua 脚本原子验证令牌和删除令牌
+        Long result = redisTemplate.execute(new DefaultRedisScript<>(script, Long.class), Collections.singletonList(key), value);
+        return !Objects.equals(result, 0L);
     }
 }
