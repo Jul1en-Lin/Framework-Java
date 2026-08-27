@@ -1,1 +1,2 @@
 service.CacheService
+config.CaffeineConfig

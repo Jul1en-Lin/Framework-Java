@@ -14,6 +14,9 @@ import java.util.concurrent.TimeUnit;
 public class CacheService {
 
     @Autowired
+    private Cache<String, Object> caffeineCache;
+
+    @Autowired
     private RedisService redisService;
 
     /**
@@ -21,11 +24,10 @@ public class CacheService {
      *
      * @param key 缓存key
      * @param valueTypeRef 嵌套模板类型
-     * @param caffeineCache 本地缓存服务
      * @return 缓存信息
      * @param <T> 缓存类型
      */
-    public <T> T getCache(String key, TypeReference<T> valueTypeRef, Cache<String, Object> caffeineCache) {
+    public <T> T getCache(String key, TypeReference<T> valueTypeRef) {
         // 从 L1 缓存中查询
         T result = (T) caffeineCache.getIfPresent(key);
         if (result != null) {
@@ -46,11 +48,10 @@ public class CacheService {
      *
      * @param key 缓存key
      * @param value 缓存值
-     * @param caffeineCache 本地缓存
      * @param <T> 缓存类型
      */
-    public <T> void setL1Cache(String key, T value, Cache<String, Object> caffeineCache) {
-        caffeineCache.put(key, value);    //todo: 本地缓存中存储的数据需设置有效时间
+    public <T> void setL1Cache(String key, T value) {
+        caffeineCache.put(key, value);    //done: 过期时间与容量上限配置
     }
 
 
@@ -62,7 +63,7 @@ public class CacheService {
      * @param <T> 缓存类型
      */
     public <T> void setL2Cache(String key, T value, Long timeout, TimeUnit timeUnit) {
-        redisService.setCacheObject(key, value, timeout, timeUnit);  //todo: 本地缓存中存储的数据需设置有效时间
+        redisService.setCacheObject(key, value, timeout, timeUnit);  //done: 本地缓存中存储的数据需设置有效时间
     }
 
 
@@ -71,14 +72,12 @@ public class CacheService {
      *
      * @param key 缓存key
      * @param value  缓存对象值
-     * @param caffeineCache 本地缓存信息
      * @param timeout 超时时间
      * @param timeUnit 超时单位
      * @param <T> 对象类型
      */
-    public <T> void setAllCache(String key, T value,
-                             Cache<String, Object> caffeineCache, Long timeout, TimeUnit timeUnit) {
+    public <T> void setAllCache(String key, T value, Long timeout, TimeUnit timeUnit) {
         setL2Cache(key, value, timeout, timeUnit);
-        setL1Cache(key, value, caffeineCache);   //todo: 本地 L1 缓存中存储的数据也需要设置有效时间
+        setL1Cache(key, value);   //done: 本地 L1 缓存中存储的数据需设置有效时间
     }
 }
