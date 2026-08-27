@@ -5,24 +5,30 @@
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>com.lien</groupId>
-        <artifactId>Framework-Java</artifactId>
+        <artifactId>lien-common</artifactId>
         <version>0.0.1-SNAPSHOT</version>
     </parent>
 
-    <artifactId>lien-common</artifactId>
-    <packaging>pom</packaging>
-    <modules>
-        <module>lien-common-core</module>
-        <module>lien-common-domain</module>
-        <module>lien-common-security</module>
-        <module>lien-common-redis</module>
-        <module>lien-common-cache</module>
-    </modules>
+    <artifactId>lien-common-cache</artifactId>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <caffeine.version>3.1.8</caffeine.version>
     </properties>
+    <dependencies>
+        <dependency>
+            <groupId>com.lien</groupId>
+            <artifactId>lien-common-redis</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+
+        </dependency>
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+            <version>${caffeine.version}</version>
+        </dependency>
+    </dependencies>
 
 </project>
