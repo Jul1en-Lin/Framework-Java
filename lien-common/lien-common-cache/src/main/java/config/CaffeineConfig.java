@@ -5,7 +5,6 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.context.annotation.Bean;
-
 import java.util.concurrent.TimeUnit;
 
 @AutoConfiguration

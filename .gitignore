@@ -31,3 +31,11 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Project Working Files ###
+MISSION.md
+NOTES.md
+RESOURCES.md
+assets/
+lessons/
+reference/
