@@ -3,7 +3,7 @@ package com.lien.mstemplateservice.entity.rabbitmq;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
-import utils.JsonUtil;
+import com.lien.common.core.utils.JsonUtil;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;

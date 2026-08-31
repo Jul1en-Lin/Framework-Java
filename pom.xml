@@ -27,6 +27,7 @@
         <module>lien-mstemplate/lien-mstemplate-service</module>
         <module>lien-gateway</module>
         <module>lien-common</module>
+        <module>lien-file</module>
     </modules>
     <scm>
         <connection/>

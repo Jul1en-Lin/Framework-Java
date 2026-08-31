@@ -1,6 +1,6 @@
-package enums;
+package com.lien.common.core.enums;
 
-import config.ThreadPoolConfig;
+import com.lien.common.core.config.ThreadPoolConfig;
 import lombok.Getter;
 
 @Getter

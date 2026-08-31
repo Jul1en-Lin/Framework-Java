@@ -1,2 +1,2 @@
-service.CacheService
-config.CaffeineConfig
+com.lien.common.cache.service.CacheService
+com.lien.common.cache.config.CaffeineConfig

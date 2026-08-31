@@ -1,5 +1,6 @@
 package utils;
 
+import com.lien.common.core.utils.StringUtil;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

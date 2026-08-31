@@ -1,6 +1,6 @@
-package config;
+package com.lien.common.core.config;
 
-import enums.RejectType;
+import com.lien.common.core.enums.RejectType;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

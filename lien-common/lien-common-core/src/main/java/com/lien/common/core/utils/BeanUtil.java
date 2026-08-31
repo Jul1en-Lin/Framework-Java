@@ -1,4 +1,4 @@
-package utils;
+package com.lien.common.core.utils;
 
 import org.springframework.beans.BeanUtils;
 
@@ -6,8 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 
-import static utils.JsonUtil.string2List;
-import static utils.JsonUtil.string2Obj;
+import static com.lien.common.core.utils.JsonUtil.string2Obj;
 
 
 public class BeanUtil extends BeanUtils{

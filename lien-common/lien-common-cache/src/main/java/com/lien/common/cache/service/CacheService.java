@@ -1,4 +1,4 @@
-package service;
+package com.lien.common.cache.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.github.benmanes.caffeine.cache.Cache;

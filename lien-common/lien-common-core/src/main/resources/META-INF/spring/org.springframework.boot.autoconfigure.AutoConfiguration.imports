@@ -1,1 +1,1 @@
-config.ThreadPoolConfig
+com.lien.common.core.config.ThreadPoolConfig

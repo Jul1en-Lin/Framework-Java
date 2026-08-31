@@ -7,7 +7,7 @@ import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
-import utils.JsonUtil;
+import com.lien.common.core.utils.JsonUtil;
 
 /**
  * Redis 配置类 设置带有自定义序列化器的RedisTemplate。

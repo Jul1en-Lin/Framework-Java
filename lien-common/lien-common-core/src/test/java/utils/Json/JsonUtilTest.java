@@ -2,7 +2,7 @@ package utils.Json;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import org.junit.jupiter.api.Test;
-import utils.JsonUtil;
+import com.lien.common.core.utils.JsonUtil;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;

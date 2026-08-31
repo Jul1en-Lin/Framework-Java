@@ -7,7 +7,7 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
-import utils.JsonUtil;
+import com.lien.common.core.utils.JsonUtil;
 
 import java.util.*;
 import java.util.concurrent.TimeUnit;
