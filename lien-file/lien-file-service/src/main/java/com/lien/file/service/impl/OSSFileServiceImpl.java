@@ -14,7 +14,6 @@ import com.lien.file.service.IFileService;
 import domain.EnumCode;
 import domain.exception.ServiceException;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
@@ -46,7 +45,7 @@ public class OSSFileServiceImpl implements IFileService {
             // 获取原始的文件名
             String originalFilename = file.getOriginalFilename();
             String extName = originalFilename.substring(originalFilename.lastIndexOf(".")+1);
-            // oss 存储命名规则：UUID + 文件的后缀名
+            // oss 存储命名规则：UUID + 文件的后缀名（key）
             String objectName = ossProperties.getPathPrefix() + UUID.randomUUID()+"."+extName;
             // 设置公共可读权限
             String objectAcl = ObjectACLType.PUBLIC_READ.toString();
@@ -175,7 +174,7 @@ public class OSSFileServiceImpl implements IFileService {
         }
     }
 
-    public static void main(String[] args) {
-        System.out.println(UUID.randomUUID());
-    }
+//    public static void main(String[] args) {
+//        System.out.println(UUID.randomUUID());
+//    }
 }
