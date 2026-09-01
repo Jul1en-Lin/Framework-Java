@@ -11,17 +11,20 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 @Slf4j
 @RestController
-@RequestMapping("/source")
-public class FileController {
+public class OSSFileController {
     @Autowired
     private IFileService fileService;
 
+    /**
+     * 文件上传
+     * @param file
+     * @return
+     */
     @PostMapping("/upload")
     public Result<FileVO> upload(MultipartFile file) {
         // todo：鉴权
@@ -31,6 +34,10 @@ public class FileController {
         return Result.success(fileVO);
     }
 
+    /**
+     * 获取前端直传签名
+     * @return
+     */
     @GetMapping("/sign")
     public Result<SignVO> getSign() {
         // todo：鉴权

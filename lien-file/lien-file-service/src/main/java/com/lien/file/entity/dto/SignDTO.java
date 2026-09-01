@@ -3,6 +3,9 @@ package com.lien.file.entity.dto;
 import lombok.Getter;
 import lombok.Setter;
 
+/**
+ *  AliYun OSS V4 签名必传参数
+ */
 @Getter
 @Setter
 public class SignDTO {

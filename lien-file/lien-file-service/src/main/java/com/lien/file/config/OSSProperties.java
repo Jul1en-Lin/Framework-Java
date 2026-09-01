@@ -11,9 +11,8 @@ import org.springframework.context.annotation.Configuration;
 
 
 /**
- * OSS 具体配置信息
+ * OSS 签名具体配置信息，从 nacos 读取
  */
-
 @Slf4j
 @Data
 @RefreshScope
@@ -62,11 +61,13 @@ public class OSSProperties {
      */
     private String pathPrefix;
 
-    private Integer expre;
+    private Integer expire;
 
     private Integer minLen;
 
     private Integer maxLen;
+
+    private String successStatus;
 
 
     /**

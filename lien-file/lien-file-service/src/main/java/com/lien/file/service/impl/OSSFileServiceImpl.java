@@ -91,21 +91,19 @@ public class OSSFileServiceImpl implements IFileService {
             signDTO.setHost(ossProperties.getBaseUrl());
             signDTO.setPathPrefix(ossProperties.getPathPrefix());
 
-            // 步骤1：创建policy。
-            ObjectMapper mapper = new ObjectMapper();
-
+            // 步骤1：创建 policy
             Map<String, Object> policy = new HashMap<>();
             DateTimeFormatter formatter = DateTimeFormatter.ofPattern(OSSCustomConstants.SIGN_EXPIRE_TIME_FORMAT)
                     .withZone(java.time.ZoneOffset.UTC);
-            String expiration = formatter.format(now.plusSeconds(ossProperties.getExpre()));
+            String expiration = formatter.format(now.plusSeconds(ossProperties.getExpire()));
             policy.put("expiration", expiration);
 
             List<Object> conditions = new ArrayList<>();
-
             Map<String, String> bucketCondition = new HashMap<>();
             bucketCondition.put("bucket", ossProperties.getBucketName());
             conditions.add(bucketCondition);
 
+            // 指定签名的版本和算法，固定值为OSS4-HMAC-SHA256
             Map<String, String> signatureVersionCondition = new HashMap<>();
             signatureVersionCondition.put("x-oss-signature-version", "OSS4-HMAC-SHA256");
             conditions.add(signatureVersionCondition);
@@ -124,33 +122,32 @@ public class OSSFileServiceImpl implements IFileService {
             // 定义日期时间格式化器
             formatter = DateTimeFormatter.ofPattern(OSSCustomConstants.SIGN_REQUEST_TIME_FORMAT)
                     .withZone(java.time.ZoneOffset.UTC);
-
             // 格式化时间
             String xOSSDate = formatter.format(now);
             signDTO.setXOSSDate(xOSSDate);
             dateCondition.put("x-oss-date", xOSSDate);
 
             conditions.add(dateCondition);
-
             conditions.add(Arrays.asList("content-length-range", ossProperties.getMinLen(), ossProperties.getMaxLen()));
             conditions.add(Arrays.asList("eq", "$success_action_status", "200"));
 
             policy.put("conditions", conditions);
 
+            ObjectMapper mapper = new ObjectMapper();
             String jsonPolicy = mapper.writeValueAsString(policy);
 
-            // 步骤2：构造待签名字符串（StringToSign）。
-            String policyBase64 = Base64.getEncoder().encodeToString(jsonPolicy.getBytes(StandardCharsets.UTF_8));
-            signDTO.setPolicy(policyBase64);
+            // 步骤2：构造待签名字符串（StringToSign）
+            String StringToSign = Base64.getEncoder().encodeToString(jsonPolicy.getBytes(StandardCharsets.UTF_8));
+            signDTO.setPolicy(StringToSign);
 
-            // 步骤3：计算SigningKey。
+            // 步骤3：计算 SigningKey
             byte[] dateKey = hmacsha256(("aliyun_v4" + accesskeysecret).getBytes(), dateStr);
             byte[] dateRegionKey = hmacsha256(dateKey, ossProperties.getRegion());
             byte[] dateRegionServiceKey = hmacsha256(dateRegionKey, "oss");
             byte[] signingKey = hmacsha256(dateRegionServiceKey, "aliyun_v4_request");
 
-            // 步骤4：计算Signature。
-            byte[] result = hmacsha256(signingKey, policyBase64);
+            // 步骤4：计算 Signature
+            byte[] result = hmacsha256(signingKey, StringToSign);
             String signature = HexFormat.of().formatHex(result);
             signDTO.setSignature(signature);
             return signDTO;
@@ -164,12 +161,10 @@ public class OSSFileServiceImpl implements IFileService {
         try {
             // 初始化HMAC密钥规格，指定算法为HMAC-SHA256并使用提供的密钥。
             SecretKeySpec secretKeySpec = new SecretKeySpec(key, "HmacSHA256");
-
             // 获取Mac实例，并通过getInstance方法指定使用HMAC-SHA256算法。
             Mac mac = Mac.getInstance("HmacSHA256");
             // 使用密钥初始化Mac对象。
             mac.init(secretKeySpec);
-
             // 执行HMAC计算，通过doFinal方法接收需要计算的数据并返回计算结果的数组。
             byte[] hmacBytes = mac.doFinal(data.getBytes());
 
@@ -180,4 +175,7 @@ public class OSSFileServiceImpl implements IFileService {
         }
     }
 
+    public static void main(String[] args) {
+        System.out.println(UUID.randomUUID());
+    }
 }
