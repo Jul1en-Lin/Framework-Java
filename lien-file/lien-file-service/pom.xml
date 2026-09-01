@@ -15,6 +15,9 @@
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- 覆盖 Spring Boot 3.0.2 默认管理的版本（5.1.4/5.1.5），OSS SDK V2 需要 5.5+（ConnectionConfig 是 5.2 才引入的类） -->
+        <httpclient5.version>5.5</httpclient5.version>
+        <httpcore5.version>5.3.4</httpcore5.version>
     </properties>
 
     <dependencies>
@@ -63,6 +66,12 @@
         <dependency>
             <groupId>com.lien</groupId>
             <artifactId>lien-common-domain</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.lien</groupId>
+            <artifactId>lien-common-core</artifactId>
             <version>0.0.1-SNAPSHOT</version>
         </dependency>
 
