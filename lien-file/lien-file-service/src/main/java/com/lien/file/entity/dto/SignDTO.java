@@ -4,15 +4,12 @@ import lombok.Getter;
 import lombok.Setter;
 
 /**
- *  AliYun OSS V4 签名必传参数
+ *  AliYun OSS V4 前端直传签名必传参数
  */
 @Getter
 @Setter
 public class SignDTO {
 
-    /**
-     * 签名
-     */
     private String signature;
 
     private String host;

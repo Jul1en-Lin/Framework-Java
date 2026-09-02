@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Configuration;
 
 
 /**
- * OSS 签名具体配置信息，从 nacos 读取
+ * OSS 具体配置信息，从 nacos 读取
  */
 @Slf4j
 @Data

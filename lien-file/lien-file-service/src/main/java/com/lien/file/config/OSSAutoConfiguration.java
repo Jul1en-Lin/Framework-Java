@@ -47,6 +47,7 @@ public class OSSAutoConfiguration {
 
     /**
      * 关闭客户端
+     * @PreDestroy 注解表示在容器销毁之前调用该方法，用于释放 OSSClient 资源
      */
     @PreDestroy
     public void closeOSSClient() {

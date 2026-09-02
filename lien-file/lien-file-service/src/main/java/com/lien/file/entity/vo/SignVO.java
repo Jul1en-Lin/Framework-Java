@@ -3,13 +3,13 @@ package com.lien.file.entity.vo;
 import lombok.Getter;
 import lombok.Setter;
 
+/**
+ * 返回前端的必要直传签名字段
+ */
 @Getter
 @Setter
 public class SignVO {
 
-    /**
-     * 签名
-     */
     private String signature;
 
     private String host;

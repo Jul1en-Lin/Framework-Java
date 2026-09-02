@@ -39,6 +39,10 @@ public class OSSFileServiceImpl implements IFileService {
     @Autowired
     private OSSProperties ossProperties;
 
+    /**
+     * 使用 SDK 进行上传文件（已集成 v4 签名）
+     * @param file 文件资源
+     */
     @Override
     public FileDTO upload(MultipartFile file) {
         try (InputStream inputStream = file.getInputStream()) {
@@ -77,6 +81,9 @@ public class OSSFileServiceImpl implements IFileService {
         }
     }
 
+    /**
+     * 获取 V4 直传签名，无 SDK 时实现上传
+     */
     @Override
     public SignDTO getSign() {
         try {
