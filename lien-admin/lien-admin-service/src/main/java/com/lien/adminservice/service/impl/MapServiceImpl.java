@@ -9,6 +9,7 @@ import com.lien.api.constants.MapConstants;
 import com.lien.common.cache.service.CacheService;
 import com.lien.common.core.utils.BeanUtil;
 import jakarta.annotation.PostConstruct;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import service.RedisService;
@@ -16,6 +17,7 @@ import service.RedisService;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
 
@@ -40,7 +42,7 @@ public class MapServiceImpl implements IMapService {
     }
 
     /**
-     * 缓存城市列表数据
+     * 提前缓存城市列表数据
      * @param regionList
      */
     private void loadCityInfo(List<SysRegion> regionList) {
@@ -56,7 +58,7 @@ public class MapServiceImpl implements IMapService {
     }
 
     /**
-     * 缓存城市首字母 A-Z 归类列表数据
+     * 提前缓存城市首字母 A-Z 归类列表数据
      * @param regionList 提前加载的全局城市列表数据
      */
     private void loadCityListPy(List<SysRegion> regionList) {
@@ -97,12 +99,53 @@ public class MapServiceImpl implements IMapService {
 
 
     @Override
-    public List<SysRegionDTO> getRegionChildrenList(int parentId) {
-        return List.of();
+    public List<SysRegionDTO> getRegionChildrenList(@NotNull Long parentId) {
+        // 尝试获取缓存
+        String cacheKey = MapConstants.CACHE_MAP_CITY_CHILDREN_KEY + parentId;
+        List<SysRegionDTO> cache = cacheService.getCache(cacheKey, new TypeReference<>() {
+        });
+        if (cache != null && !cache.isEmpty()) {
+            return cache;
+        }
+
+        List<SysRegion> cityList = regionMapper.selectAllRegion();
+        List<SysRegionDTO> childrenList = new ArrayList<>();
+        // 判断符合父级 id 进入 childrenList
+        for (SysRegion region : cityList) {
+            SysRegionDTO regionDTO = new SysRegionDTO();
+            BeanUtil.copyProperties(region, regionDTO);
+            if (Objects.equals(regionDTO.getParentId(), parentId)) {
+                childrenList.add(regionDTO);
+            }
+        }
+        cacheService.setAllCache(cacheKey, childrenList, 120L, TimeUnit.MINUTES);
+        return childrenList;
     }
 
     @Override
     public List<SysRegionDTO> getHotCityList() {
-        return List.of();
+        // 先查缓存
+        List<SysRegionDTO> hotCityList = cacheService.getCache(MapConstants.CACHE_MAP_HOT_CITY, new TypeReference<List<SysRegionDTO>>() {
+        });
+        if (hotCityList != null) {
+            return hotCityList;
+        }
+
+        // 设置6个热门城市
+        String ids = "1,2,3,4,5,6";
+        List<Long> idList = new ArrayList<>();
+        for (String num : ids.split(",")) {
+            idList.add(Long.parseLong(num));
+        }
+        // 查询热门城市结果
+        List<SysRegionDTO> result = new ArrayList<>();
+        for (SysRegion sysRegion : regionMapper.selectBatchIds(idList)) {
+            SysRegionDTO sysRegionDTO = new SysRegionDTO();
+            BeanUtil.copyProperties(sysRegion, sysRegionDTO);
+            result.add(sysRegionDTO);
+        }
+        // 4 设置缓存
+        cacheService.setAllCache(MapConstants.CACHE_MAP_HOT_CITY, result, 120L, TimeUnit.MINUTES);
+        return result;
     }
 }

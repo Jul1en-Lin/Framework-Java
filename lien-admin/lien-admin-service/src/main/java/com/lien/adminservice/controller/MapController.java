@@ -7,8 +7,10 @@ import com.lien.api.domain.vo.RegionVO;
 import com.lien.api.feign.IMapFeignClient;
 import com.lien.common.core.utils.BeanUtil;
 import domain.Result;
+import jakarta.validation.constraints.NotNull;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.ArrayList;
@@ -21,6 +23,7 @@ import java.util.TreeMap;
  * 地图控制器类
  */
 @RestController
+@Validated
 @Slf4j
 public class MapController implements IMapFeignClient {
 
@@ -53,13 +56,19 @@ public class MapController implements IMapFeignClient {
     }
 
     @Override
-    public Result<List<RegionVO>> getRegionChildrenList(Long parentId) {
-        return null;
+    public Result<List<RegionVO>> getRegionChildrenList(@NotNull Long parentId) {
+        List<SysRegionDTO> regionChildrenList = mapService.getRegionChildrenList(parentId);
+        List<RegionVO> result = new ArrayList<>();
+        BeanUtil.copyListProperties(regionChildrenList, RegionVO::new).forEach(result::add);
+        return Result.success(result);
     }
 
     @Override
     public Result<List<RegionVO>> getHotCityList() {
-        return null;
+        List<SysRegionDTO> hotCityList = mapService.getHotCityList();
+        List<RegionVO> result = new ArrayList<>();
+        BeanUtil.copyListProperties(hotCityList, RegionVO::new).forEach(result::add);
+        return Result.success(result);
     }
 
 

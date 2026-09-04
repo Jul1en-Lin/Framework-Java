@@ -2,6 +2,7 @@ package com.lien.api.feign;
 
 import com.lien.api.domain.vo.RegionVO;
 import domain.Result;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -35,7 +36,7 @@ public interface IMapFeignClient {
      * @return 子集区域列表
      */
     @GetMapping("/map/region_children_list")
-    Result<List<RegionVO>> getRegionChildrenList(@RequestParam Long parentId);
+    Result<List<RegionVO>> getRegionChildrenList(@RequestParam @NotNull Long parentId);
 
     /**
      * 获取热门城市列表

@@ -4,12 +4,14 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Getter;
+import lombok.Setter;
 
 
 /**
  * 实体类对应表
  */
 @Getter
+@Setter
 @TableName("sys_region")
 public class SysRegion {
 

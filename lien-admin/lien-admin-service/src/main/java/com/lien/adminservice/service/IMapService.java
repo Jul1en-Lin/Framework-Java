@@ -2,6 +2,7 @@ package com.lien.adminservice.service;
 
 import com.lien.adminservice.domain.dto.SysRegionDTO;
 import com.lien.adminservice.domain.entity.SysRegion;
+import jakarta.validation.constraints.NotNull;
 
 import java.util.List;
 import java.util.Map;
@@ -24,7 +25,7 @@ public interface IMapService {
      * @param parentId 父级区域ID
      * @return 子集区域列表
      */
-    List<SysRegionDTO> getRegionChildrenList(int parentId);
+    List<SysRegionDTO> getRegionChildrenList(@NotNull Long parentId);
 
     /**
      * 获取热门城市列表
