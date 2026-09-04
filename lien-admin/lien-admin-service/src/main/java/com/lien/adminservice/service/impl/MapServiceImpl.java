@@ -83,10 +83,7 @@ public class MapServiceImpl implements IMapService {
         cacheService.setAllCache(MapConstants.CACHE_MAP_CITY_PINYIN_KEY, dtoMap,120L, TimeUnit.MINUTES);
     }
 
-    /**
-     * 城市列表查询
-     * @return 城市列表信息
-     */
+
     @Override
     public List<SysRegionDTO> getCityList() {
         return cacheService.getCache(MapConstants.CACHE_MAP_CITY_KEY, new TypeReference<List<SysRegionDTO>>() {});

@@ -44,4 +44,6 @@ public interface IMapFeignClient {
      */
     @GetMapping("/map/city_hot_list")
     Result<List<RegionVO>> getHotCityList();
+
+
 }

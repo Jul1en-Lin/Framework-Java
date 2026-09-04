@@ -25,8 +25,8 @@ spring:
             refresh: true
           - data-id: share-mysql-${spring.profiles.active}.${spring.cloud.nacos.config.file-extension}
             refresh: true
-#          - data-id: share-map-${spring.profiles.active}.${spring.cloud.nacos.config.file-extension}
-#            refresh: true
+          - data-id: share-map-${spring.profiles.active}.${spring.cloud.nacos.config.file-extension}
+            refresh: true
 
 logging:
   pattern:

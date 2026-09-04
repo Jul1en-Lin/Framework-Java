@@ -7,6 +7,9 @@ import jakarta.validation.constraints.NotNull;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 城市服务接口
+ */
 public interface IMapService {
     /**
      * 城市列表查询

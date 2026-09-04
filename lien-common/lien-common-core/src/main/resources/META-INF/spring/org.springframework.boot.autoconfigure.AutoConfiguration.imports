@@ -1,1 +1,2 @@
 com.lien.common.core.config.ThreadPoolConfig
+com.lien.common.core.config.RestTemplateConfig

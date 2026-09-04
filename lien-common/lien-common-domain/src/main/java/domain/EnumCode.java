@@ -133,17 +133,17 @@ public enum EnumCode {
     /**
      * 获取地图数据失败，请稍后重试
      */
-    QQMAP_QUERY_FAILED                        (500005, "获取地图数据失败，请稍后重试"),
+    Tencent_MAP_QUERY_FAILED                        (500005, "获取地图数据失败，请稍后重试"),
 
     /**
      * 城市信息获取失败
      */
-    QQMAP_CITY_UNKNOWN                        (500006, "城市信息获取失败"),
+    Tencent_MAP_CITY_UNKNOWN                        (500006, "城市信息获取失败"),
 
     /**
      * 根据位置获取城市失败
      */
-    QQMAP_LOCATE_FAILED                        (500007, "根据位置获取城市失败"),
+    Tencent_MAP_LOCATE_FAILED                        (500007, "根据位置获取城市失败"),
 
     /**
      * 地图特性未开启
