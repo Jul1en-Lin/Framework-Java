@@ -1,6 +1,7 @@
 package com.lien.adminservice.service;
 
 import com.lien.adminservice.domain.dto.SysRegionDTO;
+import com.lien.adminservice.domain.entity.SysRegion;
 
 import java.util.List;
 import java.util.Map;
