@@ -1,7 +1,12 @@
 package com.lien.adminservice.service;
 
+import com.lien.adminservice.domain.dto.RegionCityDTO;
+import com.lien.adminservice.domain.dto.SearchPoiDTO;
 import com.lien.adminservice.domain.dto.SysRegionDTO;
 import com.lien.adminservice.domain.entity.SysRegion;
+import com.lien.api.domain.dto.LocationReqDTO;
+import com.lien.api.domain.dto.SearchReqDTO;
+import com.lien.common.core.domain.dto.BasePageDTO;
 import jakarta.validation.constraints.NotNull;
 
 import java.util.List;
@@ -35,4 +40,18 @@ public interface IMapService {
      * @return 城市列表
      */
     List<SysRegionDTO> getHotCityList();
+
+    /**
+     * 根据地点搜索
+     * @param placeSearchReqDTO 搜索条件
+     * @return 搜索结果
+     */
+    BasePageDTO<SearchPoiDTO> searchPlaceByRegion(SearchReqDTO placeSearchReqDTO);
+
+    /**
+     * 根据经纬度来定位城市
+     * @param locationReqDTO 经纬度信息
+     * @return 城市信息
+     */
+    RegionCityDTO getCityByLocation(LocationReqDTO locationReqDTO);
 }

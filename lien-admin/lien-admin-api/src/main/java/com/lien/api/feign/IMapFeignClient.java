@@ -1,10 +1,17 @@
 package com.lien.api.feign;
 
+import com.lien.api.domain.dto.LocationReqDTO;
+import com.lien.api.domain.dto.SearchReqDTO;
+import com.lien.api.domain.vo.RegionCityVO;
 import com.lien.api.domain.vo.RegionVO;
+import com.lien.api.domain.vo.SearchPoiVO;
 import domain.Result;
+import domain.vo.BasePageVO;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 
 import java.util.List;
@@ -46,4 +53,19 @@ public interface IMapFeignClient {
     Result<List<RegionVO>> getHotCityList();
 
 
+    /**
+     * 根据关键词搜索地点
+     * @param searchReqDTO 搜索条件
+     * @return 搜索结果
+     */
+    @PostMapping("/map/search")
+    Result<BasePageVO<SearchPoiVO>> searchPlaceByRegion(@RequestBody SearchReqDTO searchReqDTO);
+
+    /**
+     * 根据经纬度来定位城市
+     * @param locationReqDTO 经纬度信息
+     * @return 城市信息
+     */
+    @PostMapping("/map/locate_city_by_location")
+    Result<RegionCityVO> getCityByLocation(@RequestBody LocationReqDTO locationReqDTO);
 }

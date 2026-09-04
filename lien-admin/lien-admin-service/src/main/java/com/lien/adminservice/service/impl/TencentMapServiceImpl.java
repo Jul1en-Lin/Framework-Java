@@ -43,8 +43,8 @@ public class TencentMapServiceImpl implements ITencentMapService {
         // 拼接 url
         String requestUrl = String.format(
                 apiServer + MapConstants.Tencent_MAP_API_PLACE_SUGGESTION +
-                        "?key=%s&region=%s&region_fix=1&page_index=%s&page_size=%s&keyword=%s",
-                key, searchParamDTO.getRegionId(), searchParamDTO.getPageIndex(), searchParamDTO.getPageSize(),searchParamDTO.getKeyword()
+                        "?region=%s&keyword=%s&key=%s&region_fix=1&page_index=%s&page_size=%s",
+                searchParamDTO.getRegionId(),searchParamDTO.getKeyword(),key,searchParamDTO.getPageIndex(), searchParamDTO.getPageSize()
         );
 
         // 发送请求并转换对象
@@ -60,8 +60,8 @@ public class TencentMapServiceImpl implements ITencentMapService {
     public GeoResultDTO getDistrictByLonLat(LocationDTO locationDTO) {
         // 1 构建请求url
         String url = String.format(apiServer + MapConstants.Tencent_MAP_GEOCODER +
-                "?key=%s&location=%s",
-                key, locationDTO.formatInfo()
+                "?location=%s&key=%s",
+                locationDTO.formatInfo(),key
         );
         // 2 直接发送请求，并拿到返回结果再做对象转换
         ResponseEntity<GeoResultDTO> response =  restTemplate.getForEntity(url, GeoResultDTO.class);

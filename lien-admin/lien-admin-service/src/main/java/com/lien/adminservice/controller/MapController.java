@@ -1,14 +1,25 @@
 package com.lien.adminservice.controller;
 
-import com.lien.adminservice.domain.dto.SysRegionDTO;
-import com.lien.adminservice.domain.entity.SysRegion;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.lien.adminservice.domain.dto.*;
 import com.lien.adminservice.service.IMapService;
+import com.lien.adminservice.service.ITencentMapService;
+import com.lien.api.constants.MapConstants;
+import com.lien.api.domain.dto.LocationReqDTO;
+import com.lien.api.domain.dto.SearchReqDTO;
+import com.lien.api.domain.vo.RegionCityVO;
 import com.lien.api.domain.vo.RegionVO;
+import com.lien.api.domain.vo.SearchPoiVO;
 import com.lien.api.feign.IMapFeignClient;
+import com.lien.common.cache.service.CacheService;
+import com.lien.common.core.domain.dto.BasePageDTO;
 import com.lien.common.core.utils.BeanUtil;
+import com.lien.common.core.utils.PageUtil;
 import domain.Result;
+import domain.vo.BasePageVO;
 import jakarta.validation.constraints.NotNull;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.RestController;
@@ -27,13 +38,12 @@ import java.util.TreeMap;
 @Slf4j
 public class MapController implements IMapFeignClient {
 
+    /**
+     * 地图服务
+     */
     @Autowired
     private IMapService mapService;
 
-    /**
-     * 城市列表查询
-     * @return 城市列表信息
-     */
     @Override
     public Result<List<RegionVO>> getCityList() {
         List<SysRegionDTO> dtoList = mapService.getCityList();
@@ -71,5 +81,20 @@ public class MapController implements IMapFeignClient {
         return Result.success(result);
     }
 
+    @Override
+    public Result<BasePageVO<SearchPoiVO>> searchPlaceByRegion(SearchReqDTO searchReqDTO) {
+        BasePageDTO<SearchPoiDTO> basePageReqDTO = mapService.searchPlaceByRegion(searchReqDTO);
+        BasePageVO<SearchPoiVO> result = new BasePageVO<>();
+        BeanUtils.copyProperties(basePageReqDTO, result);
+        return Result.success(result);
+    }
+
+    @Override
+    public Result<RegionCityVO> getCityByLocation(LocationReqDTO locationReqDTO) {
+        RegionCityDTO cityByLocation = mapService.getCityByLocation(locationReqDTO);
+        RegionCityVO result = new RegionCityVO();
+        BeanUtils.copyProperties(cityByLocation, result);
+        return Result.success(result);
+    }
 
 }

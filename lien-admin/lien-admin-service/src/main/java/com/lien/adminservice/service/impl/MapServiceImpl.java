@@ -1,15 +1,24 @@
 package com.lien.adminservice.service.impl;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.lien.adminservice.domain.dto.SysRegionDTO;
+import com.lien.adminservice.domain.dto.*;
 import com.lien.adminservice.domain.entity.SysRegion;
 import com.lien.adminservice.mapper.RegionMapper;
 import com.lien.adminservice.service.IMapService;
+import com.lien.adminservice.service.ITencentMapService;
 import com.lien.api.constants.MapConstants;
+import com.lien.api.domain.dto.LocationReqDTO;
+import com.lien.api.domain.dto.SearchReqDTO;
+import com.lien.api.domain.vo.SearchPoiVO;
 import com.lien.common.cache.service.CacheService;
+import com.lien.common.core.domain.dto.BasePageDTO;
 import com.lien.common.core.utils.BeanUtil;
+import com.lien.common.core.utils.PageUtil;
+import domain.Result;
+import domain.vo.BasePageVO;
 import jakarta.annotation.PostConstruct;
 import jakarta.validation.constraints.NotNull;
+import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import service.RedisService;
@@ -28,6 +37,8 @@ public class MapServiceImpl implements IMapService {
     private CacheService cacheService;
     @Autowired
     private RegionMapper regionMapper;
+    @Autowired
+    private ITencentMapService tencentMapService;
 
     /**
      * 请求前提前构造
@@ -144,5 +155,78 @@ public class MapServiceImpl implements IMapService {
         // 4 设置缓存
         cacheService.setAllCache(MapConstants.CACHE_MAP_HOT_CITY, result, 120L, TimeUnit.MINUTES);
         return result;
+    }
+
+    @Override
+    public BasePageDTO<SearchPoiDTO> searchPlaceByRegion(SearchReqDTO placeSearchReqDTO) {
+        // 构建入参
+        SearchParamDTO SearchParamDTO = constructReqParam(placeSearchReqDTO);
+        PoiListDTO poiListDTO = tencentMapService.searchPlaceByRegion(SearchParamDTO);
+
+        // 结果对象赋值转换成 BasePageDTO 的 List<SearchPoiDTO> list;
+        List<PoiListDTO.PoiDTO> dataList = poiListDTO.getData();
+        List<SearchPoiDTO> PoiVOList = new ArrayList<>();
+        for (PoiListDTO.PoiDTO poiDTO : dataList) {
+            SearchPoiDTO searchPoiVO = new SearchPoiDTO();
+            BeanUtil.copyProperties(poiDTO, searchPoiVO);
+            // 手动赋值 有位置封装嵌套
+            searchPoiVO.setLongitude(poiDTO.getLocation().getLng());
+            searchPoiVO.setLatitude(poiDTO.getLocation().getLat());
+            PoiVOList.add(searchPoiVO);
+        }
+        // 剩余元素传参
+        BasePageDTO<SearchPoiDTO> result = new BasePageDTO<>();
+        result.setTotals(poiListDTO.getCount());
+        result.setTotalPages(PageUtil.getTotalPages(result.getTotals(), placeSearchReqDTO.getPageSize()));
+        result.setList(PoiVOList);
+        return result;
+    }
+
+    @Override
+    public RegionCityDTO getCityByLocation(LocationReqDTO locationReqDTO) {
+        // 构建入参
+        LocationDTO locationDTO = constructReqParam(locationReqDTO);
+        // 获取区域信息
+        GeoResultDTO geoResultDTO = tencentMapService.getDistrictByLonLat(locationDTO);
+
+        RegionCityDTO result = new RegionCityDTO();
+        if (geoResultDTO == null || geoResultDTO.getResult() == null
+                || geoResultDTO.getResult().getAd_info() == null) {
+            return result;
+        }
+
+        // 查城市列表缓存（CITY_LEVEL = 2）
+        // TODO: 缓存时由于都是固定为等级为 2 的城市，应做全量城市列表的查询
+        List<SysRegionDTO> cityCache = cacheService.getCache(MapConstants.CACHE_MAP_CITY_KEY,
+                new TypeReference<List<SysRegionDTO>>() {});
+        String cityName = geoResultDTO.getResult().getAd_info().getCity();
+        for (SysRegionDTO sysRegionDTO: cityCache) {
+            if (sysRegionDTO.getFullName().equals(cityName)) {
+                BeanUtils.copyProperties(sysRegionDTO, result);
+                return result;
+            }
+        }
+        return result;
+    }
+
+    /**
+     * 构造查询 SearchReqDTO 对象入参
+     */
+    private SearchParamDTO constructReqParam(SearchReqDTO searchReqDTO) {
+        SearchParamDTO suggestSearchDTO = new SearchParamDTO();
+        BeanUtil.copyProperties(searchReqDTO, suggestSearchDTO);
+        suggestSearchDTO.setPageIndex(searchReqDTO.getPageNo());
+        suggestSearchDTO.setRegionId(String.valueOf(searchReqDTO.getRegionId()));
+        return suggestSearchDTO;
+    }
+
+
+    /**
+     * 构造查询 LocationReqDTO 对象入参
+     */
+    private LocationDTO constructReqParam(LocationReqDTO locationReqDTO) {
+        LocationDTO suggestSearchDTO = new LocationDTO();
+        BeanUtil.copyProperties(locationReqDTO, suggestSearchDTO);
+        return suggestSearchDTO;
     }
 }
