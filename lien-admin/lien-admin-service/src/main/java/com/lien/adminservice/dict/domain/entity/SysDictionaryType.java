@@ -1,0 +1,43 @@
+package com.lien.adminservice.dict.domain.entity;
+
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
+import lombok.Getter;
+import lombok.Setter;
+
+
+/**
+ * 字典类型表
+ */
+@Getter
+@Setter
+@TableName("sys_dictionary_type")
+public class SysDictionaryType {
+
+    /**
+     * 自增主键
+     */
+    @TableId(value = "id", type = IdType.AUTO)
+    private Long id;
+
+    /**
+     * 字典类型键
+     */
+    private String typeKey;
+
+    /**
+     * 字典类型值
+     */
+    private String value;
+
+    /**
+     * 备注
+     */
+    private String remark;
+
+    /**
+     * 字典类型状态 1正常 0停用
+     */
+    private Integer status;
+}
