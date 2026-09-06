@@ -149,10 +149,9 @@ public class SysDictionaryServiceImpl implements com.lien.adminservice.dict.serv
         // 构造查询条件
         LambdaQueryWrapper<SysDictionaryData> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(SysDictionaryData::getTypeKey, dictionaryDataListReqDTO.getTypeKey());
-        // 向右模糊匹配（支持 value 和 dataKey）
+        // 向右模糊匹配（支持 value）
         if (StringUtils.isNotBlank(dictionaryDataListReqDTO.getValue())) {
             queryWrapper.likeRight(SysDictionaryData::getValue, dictionaryDataListReqDTO.getValue());
-            queryWrapper.likeRight(SysDictionaryData::getDataKey, dictionaryDataListReqDTO.getValue());
         }
         // 考虑到 sort 字段的排序问题
         queryWrapper.orderByAsc(SysDictionaryData::getSort);

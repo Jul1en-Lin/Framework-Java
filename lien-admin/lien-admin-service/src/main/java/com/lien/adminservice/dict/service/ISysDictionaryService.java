@@ -43,7 +43,7 @@ public interface ISysDictionaryService {
     Long addData(DictDataAddReqDTO dictionaryDataAddReqDTO);
 
     /**
-     * 查看字典数据列表（支持字典数据的键和值同时查找）
+     * 查看字典数据列表（支持字典数据的值 value 查找）
      * @param dictionaryDataListReqDTO 字典数据列表查询 DTO
      * @return 支持分页展示的字典数据列表
      */

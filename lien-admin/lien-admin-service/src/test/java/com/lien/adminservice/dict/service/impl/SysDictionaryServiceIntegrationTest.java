@@ -336,11 +336,12 @@ class SysDictionaryServiceIntegrationTest {
     }
 
     @Test
-    void listData_filtersByValuePrefix_onValueOrDataKey() {
+    void listData_filtersByValuePrefix_only() {
         insertType(PREFIX + "_parent", "父类型" + PREFIX);
         insertData(PREFIX + "_parent", "男1", "男甲" + PREFIX, 1);
         insertData(PREFIX + "_parent", "男2", "男乙" + PREFIX, 2);
-        insertData(PREFIX + "_parent", "女1", "女丙" + PREFIX, 3);
+        // value 不匹配、仅 dataKey 相似，不应命中（dataKey 不参与模糊匹配）
+        insertData(PREFIX + "_parent", "k_男", "女丙" + PREFIX, 3);
 
         DictDataListReqDTO reqDTO = new DictDataListReqDTO();
         reqDTO.setTypeKey(PREFIX + "_parent");

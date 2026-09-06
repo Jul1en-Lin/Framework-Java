@@ -17,12 +17,6 @@ public class DictDataListReqDTO extends BasePageReqDTO {
     private String typeKey;
 
     /**
-     * 字典数据业务主键
-     */
-    @NotBlank(message = "字典数据业务主键不能为空")
-    private String dataKey;
-
-    /**
      * 字典数据值
      */
     private String value;
