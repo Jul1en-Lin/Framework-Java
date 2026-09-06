@@ -2,7 +2,11 @@ package com.lien.adminservice.dict.controller;
 
 import com.lien.adminservice.dict.domain.dto.DictTypeWriteReqDTO;
 import com.lien.adminservice.dict.service.ISysDictionaryService;
+import com.lien.api.dict.domain.dto.DictDataAddReqDTO;
+import com.lien.api.dict.domain.dto.DictDataEditReqDTO;
+import com.lien.api.dict.domain.dto.DictDataListReqDTO;
 import com.lien.api.dict.domain.dto.DictTypeListReqDTO;
+import com.lien.api.dict.domain.vo.DictDataVO;
 import com.lien.api.dict.domain.vo.DictTypeVO;
 import com.lien.api.dict.feign.DictionaryFeignClient;
 import domain.Result;
@@ -30,12 +34,52 @@ public class DictionaryController implements DictionaryFeignClient {
     }
 
     /**
-     * 字典类型列表
+     * 查看字典类型列表
      * @param dictTypeListReqDTO 字典类型列表DTO
      * @return BasePageVO
      */
     @GetMapping("/dictionary_type/list")
     public Result<BasePageVO<DictTypeVO>> listType(@Validated DictTypeListReqDTO dictTypeListReqDTO) {
         return Result.success(sysDictionaryService.listType(dictTypeListReqDTO));
+    }
+
+    /**
+     * 编辑字典类型列表
+     * @param dictTypeWriteReqDTO 字典类型列表DTO
+     * @return BasePageVO
+     */
+    @PostMapping("/dictionary_type/edit")
+    public Result<Long> editType(@RequestBody @Validated DictTypeWriteReqDTO dictTypeWriteReqDTO) {
+        return Result.success(sysDictionaryService.editType(dictTypeWriteReqDTO));
+    }
+
+    /**
+     * 新增字典数据
+     * @param dictionaryDataAddReqDTO 新增字典数据DTO
+     * @return Long
+     */
+    @PostMapping("/dictionary_data/add")
+    public Result<Long> addData(@RequestBody @Validated DictDataAddReqDTO dictionaryDataAddReqDTO) {
+        return Result.success(sysDictionaryService.addData(dictionaryDataAddReqDTO));
+    }
+
+    /**
+     * 查询字典数据列表
+     * @param dictionaryDataListReqDTO 字典数据列表DTO
+     * @return BasePageVO
+     */
+    @GetMapping("/dictionary_data/list")
+    public Result<BasePageVO<DictDataVO>> listData(@Validated DictDataListReqDTO dictionaryDataListReqDTO) {
+        return Result.success(sysDictionaryService.listData(dictionaryDataListReqDTO));
+    }
+
+    /**
+     * 编辑字典数据
+     * @param dictionaryDataEditReqDTO 编辑字典数据DTO
+     * @return Long
+     */
+    @PostMapping("/dictionary_data/edit")
+    public Result<Long> editData(@RequestBody @Validated DictDataEditReqDTO dictionaryDataEditReqDTO) {
+        return Result.success(sysDictionaryService.editData(dictionaryDataEditReqDTO));
     }
 }

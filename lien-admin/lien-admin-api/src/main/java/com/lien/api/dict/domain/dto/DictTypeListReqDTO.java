@@ -4,7 +4,7 @@ import domain.dto.BasePageReqDTO;
 import lombok.Data;
 
 /**
- * 字典类型列表请求DTO
+ * 字典类型列表请求 DTO
  */
 @Data
 public class DictTypeListReqDTO extends BasePageReqDTO {
