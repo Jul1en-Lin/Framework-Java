@@ -7,10 +7,7 @@ import com.lien.adminservice.dict.domain.entity.SysDictionaryData;
 import com.lien.adminservice.dict.domain.entity.SysDictionaryType;
 import com.lien.adminservice.dict.mapper.SysDictionaryDataMapper;
 import com.lien.adminservice.dict.mapper.SysDictionaryTypeMapper;
-import com.lien.api.dict.domain.dto.DictDataAddReqDTO;
-import com.lien.api.dict.domain.dto.DictDataEditReqDTO;
-import com.lien.api.dict.domain.dto.DictDataListReqDTO;
-import com.lien.api.dict.domain.dto.DictTypeListReqDTO;
+import com.lien.api.dict.domain.dto.*;
 import com.lien.api.dict.domain.vo.DictDataVO;
 import com.lien.api.dict.domain.vo.DictTypeVO;
 import com.lien.common.core.utils.BeanUtil;
@@ -22,8 +19,11 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import javax.swing.text.html.parser.Entity;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -202,5 +202,90 @@ public class SysDictionaryServiceImpl implements com.lien.adminservice.dict.serv
         }
         sysDictionaryDataMapper.updateById(sysDictionaryData);
         return sysDictionaryData.getId();
+    }
+
+    @Override
+    public List<DictDataDTO> selectDictDataByType(String typeKey) {
+        LambdaQueryWrapper<SysDictionaryData> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(SysDictionaryData::getTypeKey, typeKey);
+        List<SysDictionaryData> dataList = sysDictionaryDataMapper.selectList(queryWrapper);
+        if (dataList == null || dataList.isEmpty()) {
+            return null;
+        }
+        // 转换对象
+        List<DictDataDTO> result = new ArrayList<>();
+        for (SysDictionaryData data : dataList) {
+            DictDataDTO dictDataDTO = new DictDataDTO();
+            BeanUtils.copyProperties(data, dictDataDTO);
+            result.add(dictDataDTO);
+        }
+        return result;
+    }
+
+    @Override
+    public Map<String, List<DictDataDTO>> selectDictDataByTypes(List<String> typeKeys) {
+        // 查询字典数据
+        List<SysDictionaryData> list = sysDictionaryDataMapper.selectList(new LambdaQueryWrapper<SysDictionaryData>()
+                .in(SysDictionaryData::getTypeKey, typeKeys));
+        if (list == null || list.isEmpty()) {
+            return null;
+        }
+        // 构造结果对象 List
+        List<DictDataDTO> result = new ArrayList<>();
+        for (SysDictionaryData sysDictionaryData : list) {
+            DictDataDTO dictionaryDataDTO = new DictDataDTO();
+            BeanUtils.copyProperties(sysDictionaryData, dictionaryDataDTO);
+            result.add(dictionaryDataDTO);
+        }
+        // 把结果封装成哈希映射的形式
+        Map<String, List<DictDataDTO>> map = new HashMap<>();
+        for (DictDataDTO dictionaryDataDTO : result) {
+            List<DictDataDTO> value;
+            // 先判断当前字典类型业务主键是否在哈希表中
+            if (map.get(dictionaryDataDTO.getTypeKey()) == null) {
+                value = new ArrayList<>();
+                value.add(dictionaryDataDTO);
+                map.put(dictionaryDataDTO.getTypeKey(), value);
+            } else {
+                // 当前字典类型业务主键已经在哈希表的情况
+                value = map.get(dictionaryDataDTO.getTypeKey());
+                value.add(dictionaryDataDTO);
+            }
+        }
+        return map;
+    }
+
+
+    @Override
+    public DictDataDTO getDicDataByKey(String dataKey) {
+        LambdaQueryWrapper<SysDictionaryData> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(SysDictionaryData::getDataKey, dataKey);
+        // 查询单个字典数据
+        SysDictionaryData sysDictionaryData = sysDictionaryDataMapper.selectOne(queryWrapper);
+        if (sysDictionaryData == null) {
+            return null;
+        }
+        // 转换对象
+        DictDataDTO dictDataDTO = new DictDataDTO();
+        BeanUtils.copyProperties(sysDictionaryData, dictDataDTO);
+        return dictDataDTO;
+    }
+
+    @Override
+    public List<DictDataDTO> getDicDataByKeys(List<String> dataKeys) {
+        // 查询多个字典数据
+        List<SysDictionaryData> list = sysDictionaryDataMapper.selectList(new LambdaQueryWrapper<SysDictionaryData>()
+                .in(SysDictionaryData::getDataKey, dataKeys));
+        if (list == null || list.isEmpty()) {
+            return null;
+        }
+        // 转换对象
+        List<DictDataDTO> result = new ArrayList<>();
+        for (SysDictionaryData sysDictionaryData : list) {
+            DictDataDTO dictDataDTO = new DictDataDTO();
+            BeanUtils.copyProperties(sysDictionaryData, dictDataDTO);
+            result.add(dictDataDTO);
+        }
+        return result;
     }
 }

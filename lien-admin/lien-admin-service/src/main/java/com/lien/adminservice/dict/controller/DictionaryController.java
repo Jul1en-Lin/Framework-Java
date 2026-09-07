@@ -2,10 +2,7 @@ package com.lien.adminservice.dict.controller;
 
 import com.lien.adminservice.dict.domain.dto.DictTypeWriteReqDTO;
 import com.lien.adminservice.dict.service.ISysDictionaryService;
-import com.lien.api.dict.domain.dto.DictDataAddReqDTO;
-import com.lien.api.dict.domain.dto.DictDataEditReqDTO;
-import com.lien.api.dict.domain.dto.DictDataListReqDTO;
-import com.lien.api.dict.domain.dto.DictTypeListReqDTO;
+import com.lien.api.dict.domain.dto.*;
 import com.lien.api.dict.domain.vo.DictDataVO;
 import com.lien.api.dict.domain.vo.DictTypeVO;
 import com.lien.api.dict.feign.DictionaryFeignClient;
@@ -17,6 +14,9 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+import java.util.Map;
 
 @RestController
 public class DictionaryController implements DictionaryFeignClient {
@@ -81,5 +81,25 @@ public class DictionaryController implements DictionaryFeignClient {
     @PostMapping("/dictionary_data/edit")
     public Result<Long> editData(@RequestBody @Validated DictDataEditReqDTO dictionaryDataEditReqDTO) {
         return Result.success(sysDictionaryService.editData(dictionaryDataEditReqDTO));
+    }
+
+    @Override
+    public List<DictDataDTO> selectDictDataByType(String typeKey) {
+        return sysDictionaryService.selectDictDataByType(typeKey);
+    }
+
+    @Override
+    public Map<String, List<DictDataDTO>> selectDictDataByTypes(List<String> typeKeys) {
+        return sysDictionaryService.selectDictDataByTypes(typeKeys);
+    }
+
+    @Override
+    public DictDataDTO getDicDataByKey(String dataKey) {
+        return sysDictionaryService.getDicDataByKey(dataKey);
+    }
+
+    @Override
+    public List<DictDataDTO> getDicDataByKeys(List<String> dataKeys) {
+        return sysDictionaryService.getDicDataByKeys(dataKeys);
     }
 }
