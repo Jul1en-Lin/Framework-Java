@@ -31,14 +31,14 @@ public class SysArgumentServiceImpl implements ISysArgumentService {
     public Long add(ArgumentAddReqDTO argumentAddReqDTO) {
         // 查询参数是否存在
         LambdaQueryWrapper<SysArgument> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(SysArgument::getKey, argumentAddReqDTO.getConfigKey());
+        queryWrapper.eq(SysArgument::getConfigKey, argumentAddReqDTO.getConfigKey());
         if (sysArgumentMapper.selectOne(queryWrapper) != null) {
             throw new ServiceException("已存在参数主键");
         }
 
         // 插入数据
         SysArgument data = new SysArgument();
-        data.setKey(argumentAddReqDTO.getConfigKey());
+        data.setConfigKey(argumentAddReqDTO.getConfigKey());
         data.setName(argumentAddReqDTO.getName());
         data.setValue(argumentAddReqDTO.getValue());
         if (argumentAddReqDTO.getRemark() != null) {
@@ -53,7 +53,7 @@ public class SysArgumentServiceImpl implements ISysArgumentService {
         // 构造查询条件
         LambdaQueryWrapper<SysArgument> queryWrapper = new LambdaQueryWrapper<>();
         if (argumentListReqDTO.getConfigKey() != null) {
-            queryWrapper.eq(SysArgument::getKey, argumentListReqDTO.getConfigKey());
+            queryWrapper.eq(SysArgument::getConfigKey, argumentListReqDTO.getConfigKey());
         }
         if (argumentListReqDTO.getName() != null) {
             queryWrapper.like(SysArgument::getName, argumentListReqDTO.getName());
@@ -68,6 +68,7 @@ public class SysArgumentServiceImpl implements ISysArgumentService {
         for (SysArgument sysArgument : sysArguments.getRecords()) {
             ArgumentVO argumentVO = new ArgumentVO();
             BeanUtil.copyProperties(sysArgument, argumentVO);
+            argumentVO.setConfigKey(sysArgument.getConfigKey());
             voList.add(argumentVO);
         }
 
@@ -75,14 +76,14 @@ public class SysArgumentServiceImpl implements ISysArgumentService {
         result.setTotals((int) sysArguments.getTotal());
         result.setTotalPages((int) sysArguments.getPages());
         result.setList(voList);
-        return null;
+        return result;
     }
 
     @Override
     public Long edit(ArgumentEditReqDTO argumentEditReqDTO) {
         // 查询修改的参数是否已经存在，不存在则不允许修改
         SysArgument sysArgument = sysArgumentMapper.selectOne(new LambdaQueryWrapper<SysArgument>()
-                .eq(SysArgument::getKey, argumentEditReqDTO.getConfigKey()));
+                .eq(SysArgument::getConfigKey, argumentEditReqDTO.getConfigKey()));
         if (sysArgument == null) {
             throw new ServiceException("不存在要修改的参数主键");
         }
@@ -90,7 +91,7 @@ public class SysArgumentServiceImpl implements ISysArgumentService {
         // 检查要修改的数据是否与已存在的参数存在冲突，存在则不允许修改
         if (sysArgumentMapper.selectOne(new LambdaQueryWrapper<SysArgument>()
                 .eq(SysArgument::getName, argumentEditReqDTO.getName())
-                .ne(SysArgument::getKey, argumentEditReqDTO.getConfigKey())) != null) {
+                .ne(SysArgument::getConfigKey, argumentEditReqDTO.getConfigKey())) != null) {
             throw new ServiceException("已存在参数名称，不允许修改");
         }
 

@@ -3,6 +3,7 @@ package com.lien.adminservice.dict.domain.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.TableField;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -25,7 +26,8 @@ public class SysArgument {
     /**
      * 参数键（业务主键）
      */
-    private String key;
+    @TableField("config_key")
+    private String configKey;
 
     /**
      * 参数名称
@@ -42,8 +44,4 @@ public class SysArgument {
      */
     private String remark;
 
-    /**
-     * 参数状态 1正常 0停用
-     */
-    private Integer status;
 }
