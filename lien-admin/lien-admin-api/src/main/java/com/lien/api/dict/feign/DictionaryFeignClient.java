@@ -47,4 +47,5 @@ public interface DictionaryFeignClient {
     @PostMapping("/dictionary_data/keys")
     List<DictDataDTO> getDicDataByKeys(@RequestBody List<String> dataKeys);
 
+
 }
