@@ -5,7 +5,9 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.lien.adminservice.dict.domain.entity.SysArgument;
 import com.lien.adminservice.dict.mapper.SysArgumentMapper;
 import com.lien.adminservice.dict.service.ISysArgumentService;
+import com.lien.adminservice.map.domain.dto.SysRegionDTO;
 import com.lien.api.dict.domain.dto.ArgumentAddReqDTO;
+import com.lien.api.dict.domain.dto.ArgumentDTO;
 import com.lien.api.dict.domain.dto.ArgumentEditReqDTO;
 import com.lien.api.dict.domain.dto.ArgumentListReqDTO;
 import com.lien.api.dict.domain.vo.ArgumentVO;
@@ -103,5 +105,38 @@ public class SysArgumentServiceImpl implements ISysArgumentService {
         }
         sysArgumentMapper.updateById(sysArgument);
         return sysArgument.getId();
+    }
+
+    @Override
+    public ArgumentDTO getByConfigKey(String configKey) {
+        LambdaQueryWrapper<SysArgument> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(SysArgument::getConfigKey,configKey);
+
+        SysArgument data = sysArgumentMapper.selectOne(queryWrapper);
+        if (data != null) {
+            ArgumentDTO result = new ArgumentDTO();
+            BeanUtil.copyProperties(result,data);
+            return result;
+        }
+        return null;
+    }
+
+    @Override
+    public List<ArgumentDTO> getByConfigKeys(List<String> configKeys) {
+        if (configKeys.isEmpty()) return null;
+
+        List<SysArgument> datas = sysArgumentMapper.selectList(new LambdaQueryWrapper<SysArgument>()
+                .in(SysArgument::getConfigKey, configKeys));
+
+        if (!datas.isEmpty()) {
+            List<ArgumentDTO> result = new ArrayList<>();
+            for (SysArgument data : datas) {
+                ArgumentDTO dto = new ArgumentDTO();
+                BeanUtil.copyProperties(dto,data);
+                result.add(dto);
+            }
+            return result;
+        }
+        return null;
     }
 }

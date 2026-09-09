@@ -1,10 +1,13 @@
 package com.lien.adminservice.dict.service;
 
 import com.lien.api.dict.domain.dto.ArgumentAddReqDTO;
+import com.lien.api.dict.domain.dto.ArgumentDTO;
 import com.lien.api.dict.domain.dto.ArgumentEditReqDTO;
 import com.lien.api.dict.domain.dto.ArgumentListReqDTO;
 import com.lien.api.dict.domain.vo.ArgumentVO;
 import domain.vo.BasePageVO;
+
+import java.util.List;
 
 /**
  * 参数服务接口
@@ -21,7 +24,7 @@ public interface ISysArgumentService {
     /**
      * 参数列表
      * @param argumentListReqDTO 查看参数DTO
-     * @return 分页展示参数列表
+     * @return 分页展示多个参数
      */
     BasePageVO<ArgumentVO> list(ArgumentListReqDTO argumentListReqDTO);
 
@@ -31,4 +34,19 @@ public interface ISysArgumentService {
      * @return 参数的自增 Id
      */
     Long edit(ArgumentEditReqDTO argumentEditReqDTO);
+
+
+    /**
+     * 根据参数键查询参数对象
+     * @param configKey 参数键
+     * @return 参数对象
+     */
+    ArgumentDTO getByConfigKey(String configKey);
+
+    /**
+     * 根据多个参数键查询多个参数对象
+     * @param configKeys 多个参数键
+     * @return 多个参数对象
+     */
+    List<ArgumentDTO> getByConfigKeys(List<String> configKeys);
 }

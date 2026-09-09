@@ -1,6 +1,7 @@
 package com.lien.adminservice.map.service.impl;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.lien.adminservice.dict.service.ISysArgumentService;
 import com.lien.adminservice.map.domain.dto.*;
 import com.lien.adminservice.map.domain.entity.SysRegion;
 import com.lien.adminservice.map.mapper.RegionMapper;
@@ -35,6 +36,8 @@ public class MapServiceImpl implements IMapService {
     private RegionMapper regionMapper;
     @Autowired
     private ITencentMapService tencentMapService;
+    @Autowired
+    private ISysArgumentService iSysArgumentService;
 
     /**
      * 请求前提前构造
@@ -136,7 +139,8 @@ public class MapServiceImpl implements IMapService {
         }
 
         // 设置6个热门城市
-        String ids = "1,2,3,4,5,6";
+        // 使用参数服务获取热门城市的 id 列表，解耦
+        String ids = iSysArgumentService.getByConfigKey(MapConstants.SYS_HOT_CITY_KEY).getValue();
         List<Long> idList = new ArrayList<>();
         for (String num : ids.split(",")) {
             idList.add(Long.parseLong(num));

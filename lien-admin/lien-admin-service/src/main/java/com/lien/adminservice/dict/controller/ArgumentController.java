@@ -2,18 +2,22 @@ package com.lien.adminservice.dict.controller;
 
 import com.lien.adminservice.dict.service.ISysArgumentService;
 import com.lien.api.dict.domain.dto.ArgumentAddReqDTO;
+import com.lien.api.dict.domain.dto.ArgumentDTO;
 import com.lien.api.dict.domain.dto.ArgumentEditReqDTO;
 import com.lien.api.dict.domain.dto.ArgumentListReqDTO;
 import com.lien.api.dict.domain.vo.ArgumentVO;
+import com.lien.api.dict.feign.ArgumentFeignClient;
 import domain.Result;
 import domain.vo.BasePageVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/argument")
-public class ArgumentController {
+public class ArgumentController implements ArgumentFeignClient {
 
     @Autowired
     private ISysArgumentService iSysArgumentService;
@@ -46,5 +50,15 @@ public class ArgumentController {
     @PostMapping("/edit")
     public Result<Long> edit(@RequestBody @Validated ArgumentEditReqDTO argumentEditReqDTO) {
         return Result.success(iSysArgumentService.edit(argumentEditReqDTO));
+    }
+
+    @Override
+    public ArgumentDTO getByConfigKey(String configKey) {
+        return iSysArgumentService.getByConfigKey(configKey);
+    }
+
+    @Override
+    public List<ArgumentDTO> getByConfigKeys(List<String> configKeys) {
+        return iSysArgumentService.getByConfigKeys(configKeys);
     }
 }
