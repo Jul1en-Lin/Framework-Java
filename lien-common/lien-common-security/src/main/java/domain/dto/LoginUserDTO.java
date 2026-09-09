@@ -10,9 +10,9 @@ import lombok.Getter;
 public class LoginUserDTO {
 
     /**
-     * 用户标识
+     * 用户 token（唯一标识）
      */
-    private String userKey;
+    private String userToken;
 
     /**
      * 用户ID

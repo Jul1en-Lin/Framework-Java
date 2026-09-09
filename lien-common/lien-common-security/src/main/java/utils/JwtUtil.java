@@ -23,7 +23,7 @@ public class JwtUtil {
      * @param claims 数据声明
      * @return 一个紧凑的 url 安全 JWT Token 令牌字符串。
      */
-    private static String createToken(Map<String, Object> claims) {
+    public static String createToken(Map<String, Object> claims) {
         // 生成 JWT token
         return Jwts.builder().setClaims(claims).signWith(SignatureAlgorithm.HS512, secretKey).compact();
     }
@@ -54,7 +54,7 @@ public class JwtUtil {
     }
 
     /**
-     * 根据数据声明获取用户标识
+     * 根据数据声明获取用户标识（再封装）
      * @param claims 数据声明
      * @return 用户标识
      */
@@ -73,7 +73,7 @@ public class JwtUtil {
     }
 
     /**
-     * 根据数据声明获取用户ID
+     * 根据数据声明获取用户ID（再封装）
      * @param claims 数据声明
      * @return 用户ID
      */
@@ -92,7 +92,7 @@ public class JwtUtil {
     }
 
     /**
-     * 根据数据声明获取用户名称
+     * 根据数据声明获取用户名称（再封装）
      * @param claims 数据声明
      * @return 用户名称
      */
@@ -112,7 +112,7 @@ public class JwtUtil {
     }
 
     /**
-     * 根据数据声明获取用户来源
+     * 根据数据声明获取用户来源（再封装）
      * @param claims 数据声明
      * @return 用户来源
      */

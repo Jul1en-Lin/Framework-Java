@@ -76,6 +76,12 @@
             <scope>compile</scope>
         </dependency>
 
+        <dependency>
+            <groupId>com.lien</groupId>
+            <artifactId>lien-common-redis</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+        </dependency>
+
     </dependencies>
 
 </project>
