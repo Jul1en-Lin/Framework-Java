@@ -138,8 +138,8 @@ public class MapServiceImpl implements IMapService {
             return hotCityList;
         }
 
-        // 设置6个热门城市
-        // 使用参数服务获取热门城市的 id 列表，解耦
+        // 设置6热门城市
+        // 使用参数服务表达热门城市的 id 列表，解耦方便自定义
         String ids = iSysArgumentService.getByConfigKey(MapConstants.SYS_HOT_CITY_KEY).getValue();
         List<Long> idList = new ArrayList<>();
         for (String num : ids.split(",")) {
