@@ -115,7 +115,7 @@ public class SysArgumentServiceImpl implements ISysArgumentService {
         SysArgument data = sysArgumentMapper.selectOne(queryWrapper);
         if (data != null) {
             ArgumentDTO result = new ArgumentDTO();
-            BeanUtil.copyProperties(result,data);
+            BeanUtil.copyProperties(data, result);
             return result;
         }
         return null;
@@ -132,7 +132,7 @@ public class SysArgumentServiceImpl implements ISysArgumentService {
             List<ArgumentDTO> result = new ArrayList<>();
             for (SysArgument data : datas) {
                 ArgumentDTO dto = new ArgumentDTO();
-                BeanUtil.copyProperties(dto,data);
+                BeanUtil.copyProperties(data, dto);
                 result.add(dto);
             }
             return result;

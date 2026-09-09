@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.lien.adminservice.dict.domain.entity.SysArgument;
 import com.lien.adminservice.dict.mapper.SysArgumentMapper;
 import com.lien.api.dict.domain.dto.ArgumentAddReqDTO;
+import com.lien.api.dict.domain.dto.ArgumentDTO;
 import com.lien.api.dict.domain.dto.ArgumentEditReqDTO;
 import com.lien.api.dict.domain.dto.ArgumentListReqDTO;
 import com.lien.api.dict.domain.vo.ArgumentVO;
@@ -161,6 +162,72 @@ class SysArgumentServiceImplTest {
 
         assertEquals("已存在参数名称，不允许修改", exception.getMsg());
         verify(mapper, never()).updateById(any(SysArgument.class));
+    }
+
+    // ---------- getByConfigKey / getByConfigKeys（Feign 查询接口） ----------
+
+    @Test
+    void getByConfigKey_mapsAllFieldsToDto() {
+        SysArgument argument = new SysArgument();
+        argument.setId(10L);
+        argument.setConfigKey("app.timeout");
+        argument.setName("超时时间");
+        argument.setValue("30");
+        argument.setRemark("秒");
+        when(mapper.selectOne(any())).thenReturn(argument);
+
+        ArgumentDTO result = service.getByConfigKey("app.timeout");
+
+        assertNotNull(result);
+        assertEquals(10L, result.getId());
+        assertEquals("app.timeout", result.getConfigKey());
+        assertEquals("超时时间", result.getName());
+        assertEquals("30", result.getValue());
+        assertEquals("秒", result.getRemark());
+    }
+
+    @Test
+    void getByConfigKey_whenMissing_returnsNull() {
+        when(mapper.selectOne(any())).thenReturn(null);
+
+        assertNull(service.getByConfigKey("missing"));
+    }
+
+    @Test
+    void getByConfigKeys_mapsAllRowsToDto() {
+        SysArgument first = new SysArgument();
+        first.setId(1L);
+        first.setConfigKey("app.timeout");
+        first.setName("超时时间");
+        first.setValue("30");
+        SysArgument second = new SysArgument();
+        second.setId(2L);
+        second.setConfigKey("app.retry");
+        second.setName("重试次数");
+        second.setValue("3");
+        when(mapper.selectList(any())).thenReturn(List.of(first, second));
+
+        List<ArgumentDTO> result = service.getByConfigKeys(List.of("app.timeout", "app.retry"));
+
+        assertNotNull(result);
+        assertEquals(2, result.size());
+        assertEquals("app.timeout", result.get(0).getConfigKey());
+        assertEquals("30", result.get(0).getValue());
+        assertEquals("app.retry", result.get(1).getConfigKey());
+        assertEquals("3", result.get(1).getValue());
+    }
+
+    @Test
+    void getByConfigKeys_whenEmptyInput_returnsNullWithoutQuery() {
+        assertNull(service.getByConfigKeys(List.of()));
+        verify(mapper, never()).selectList(any());
+    }
+
+    @Test
+    void getByConfigKeys_whenNoMatch_returnsNull() {
+        when(mapper.selectList(any())).thenReturn(List.of());
+
+        assertNull(service.getByConfigKeys(List.of("missing")));
     }
 
     private ArgumentAddReqDTO addRequest(String key, String name, String value, String remark) {

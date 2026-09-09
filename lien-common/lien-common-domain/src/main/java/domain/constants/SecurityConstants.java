@@ -1,0 +1,32 @@
+package domain.constants;
+
+/**
+ * 安全常量信息（JWT 鉴权）
+ */
+public class SecurityConstants {
+
+    /**
+     * 用户标识
+     */
+    public static final String USER_KEY = "user_key";
+
+    /**
+     * 用户ID
+     */
+    public static final String USER_ID = "user_id";
+
+    /**
+     * 用户来源
+     */
+    public static final String USER_FROM = "user_from";
+
+    /**
+     * 用户名称
+     */
+    public static final String USERNAME = "username";
+
+    /**
+     * JWT 授权字段
+     */
+    public static final String AUTHENTICATION = "Authorization";
+}
