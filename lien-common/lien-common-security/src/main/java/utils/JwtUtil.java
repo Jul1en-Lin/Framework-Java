@@ -4,8 +4,11 @@ import domain.constants.SecurityConstants;
 import domain.constants.TokenConstants;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.security.Keys;
 
+import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Map;
 
 /**
@@ -15,8 +18,12 @@ public class JwtUtil {
 
     /**
      * JWT 秘钥
+     * <p>
+     * jjwt 0.12+ 强制校验 HMAC 密钥长度（HS512 要求 >= 512 bit），
+     * 原秘钥只有 30 字节，因此补零至 64 字节后交由 jjwt 构建 HMAC-SHA512 SecretKey。
      */
-    private static String secretKey = TokenConstants.SECRET_KEY;
+    private static final SecretKey secretKey = Keys.hmacShaKeyFor(
+            Arrays.copyOf(TokenConstants.SECRET_KEY.getBytes(StandardCharsets.UTF_8), 64));
 
     /**
      * 从原始数据声明生成令牌
@@ -25,7 +32,7 @@ public class JwtUtil {
      */
     public static String createToken(Map<String, Object> claims) {
         // 生成 JWT token
-        return Jwts.builder().setClaims(claims).signWith(SignatureAlgorithm.HS512, secretKey).compact();
+        return Jwts.builder().setClaims(claims).signWith(secretKey, Jwts.SIG.HS512).compact();
     }
 
 
@@ -35,7 +42,7 @@ public class JwtUtil {
      * @return 数据声明（最终是一个JSON映射，任何值都可以添加到其中）
      */
     public static Claims parseToken(String token) {
-        return Jwts.parser().setSigningKey(secretKey).parseClaimsJws(token).getBody();
+        return Jwts.parser().verifyWith(secretKey).build().parseSignedClaims(token).getPayload();
     }
 
 
