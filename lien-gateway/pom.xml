@@ -30,6 +30,12 @@
         </dependency>
 
         <dependency>
+            <groupId>com.lien</groupId>
+            <artifactId>lien-common-redis</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+        </dependency>
+
+        <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-gateway</artifactId>
         </dependency>
@@ -62,6 +68,10 @@
         </dependency>
 
 
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt</artifactId>
+        </dependency>
     </dependencies>
 
     <build>

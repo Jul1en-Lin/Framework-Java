@@ -23,6 +23,7 @@ public enum EnumCode {
      * 无效的参数
      */
     INVALID_PARA                      (400000, "无效的参数"),
+
     /**
      * 无效的验证码
      */

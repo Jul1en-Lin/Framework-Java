@@ -16,7 +16,7 @@ public class TokenConstants {
     public final static String PREFIX = "Bearer ";
 
     /**
-     * 已授权的令牌 Token 在 Redis 缓存的 key
+     * 已授权的令牌 Token 在 Redis 缓存的前缀 key
      */
     public final static String LOGIN_TOKEN_KEY = "logintoken:";
 }

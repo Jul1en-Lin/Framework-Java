@@ -29,7 +29,7 @@ public class ServletUtil {
      * @param str 内容
      * @return 编码后的内容
      */
-    public static String urlEncode(String str) {
+    public static String encodeFormValue(String str) {
         return URLEncoder.encode(str, StandardCharsets.UTF_8);
     }
 

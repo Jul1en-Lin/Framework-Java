@@ -31,7 +31,7 @@ public class TokenService {
     private static long MILLIS_MINUTES = 60 * 1000;
 
     /**
-     * 根据登录用户信息生成 Token 令牌
+     * 根据登录用户信息生成 Token 令牌（需Id、UserFrom、UserName即可）
      * @param loginUserDTO 登录用户信息
      * @return 生成的 Token 令牌
      */

@@ -3,6 +3,7 @@ package service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
@@ -16,6 +17,7 @@ import java.util.concurrent.TimeUnit;
 public class RedisService {
 
     @Autowired
+    @Qualifier("customRedisTemplate")
     private RedisTemplate<String, Object> redisTemplate;
 
     // *********************** 操作常用方法 **************************
