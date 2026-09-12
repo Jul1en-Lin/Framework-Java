@@ -28,5 +28,5 @@ public class SecurityConstants {
     /**
      * JWT 授权字段
      */
-    public static final String AUTHENTICATION = "Authorization";
+        public static final String AUTHENTICATION = "Authorization";
 }

@@ -44,13 +44,12 @@ public class SysDictionaryServiceImpl implements com.lien.adminservice.dict.serv
                 .eq(SysDictionaryType::getValue, dictTypeWriteReqDTO.getValue())
                 .or()
                 .eq(SysDictionaryType::getTypeKey, dictTypeWriteReqDTO.getTypeKey());
-        SysDictionaryType sysDictionaryType = sysDictTypeMapper.selectOne(queryWrapper);
-        if (sysDictionaryType != null) {
+        // 为了避免查询到两条数据以上的数据后，selectOne 抛出异常，使用 selectCount 方法更合适
+        if (sysDictTypeMapper.selectCount(queryWrapper) > 0) {
             throw new ServiceException("字典类型的键或者值已存在");
         }
-
         // 插入值
-        sysDictionaryType = new SysDictionaryType();
+        SysDictionaryType sysDictionaryType = new SysDictionaryType();
         sysDictionaryType.setValue(dictTypeWriteReqDTO.getValue());
         sysDictionaryType.setTypeKey(dictTypeWriteReqDTO.getTypeKey());
         if (StringUtils.isNotBlank(dictTypeWriteReqDTO.getRemark())) {
