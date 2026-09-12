@@ -4,6 +4,8 @@ package com.lien.adminservice.user.service;
 import com.lien.adminservice.user.domain.dto.PasswordLoginDTO;
 import com.lien.adminservice.user.domain.dto.SysUserDTO;
 import com.lien.adminservice.user.domain.dto.SysUserListReqDTO;
+import com.lien.adminservice.user.domain.dto.SysUserLoginDTO;
+import com.lien.adminservice.user.domain.vo.SysUserLoginVO;
 import domain.dto.TokenDTO;
 
 import java.util.List;
@@ -33,4 +35,10 @@ public interface ISysUserService {
      * @return B 端用户列表
      */
     List<SysUserDTO> getUserList(SysUserListReqDTO sysUserListReqDTO);
+
+    /**
+     * 从请求中拿到令牌 Header 获取 B 端登录用户信息
+     * @return B 端用户信息VO
+     */
+    SysUserLoginDTO getLoginUser();
 }

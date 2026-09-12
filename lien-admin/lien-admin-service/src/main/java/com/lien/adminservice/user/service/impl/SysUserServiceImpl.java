@@ -7,10 +7,12 @@ import com.lien.adminservice.dict.service.ISysDictionaryService;
 import com.lien.adminservice.user.domain.dto.PasswordLoginDTO;
 import com.lien.adminservice.user.domain.dto.SysUserDTO;
 import com.lien.adminservice.user.domain.dto.SysUserListReqDTO;
+import com.lien.adminservice.user.domain.dto.SysUserLoginDTO;
 import com.lien.adminservice.user.domain.entity.SysUser;
 import com.lien.adminservice.user.mapper.SysUserMapper;
 import com.lien.adminservice.user.service.ISysUserService;
 import com.lien.common.core.utils.AESUtil;
+import com.lien.common.core.utils.BeanUtil;
 import com.lien.common.core.utils.VerifyUtil;
 import domain.EnumCode;
 import domain.dto.LoginUserDTO;
@@ -184,5 +186,28 @@ public class SysUserServiceImpl implements ISysUserService {
             sysUserDTO.setRemark(sysUser.getRemark());
             return sysUserDTO;
         }).collect(Collectors.toList());
+    }
+
+
+    @Override
+    public SysUserLoginDTO getLoginUser() {
+
+        // 从 Redis 获取当前登录用户的部分信息
+        LoginUserDTO loginUserDTO = tokenService.getUserInfo();
+        if (loginUserDTO == null || loginUserDTO.getUserId() == null) {
+            throw new ServiceException("用户令牌有误", EnumCode.TOKEN_CHECK_FAILED.getCode());
+        }
+
+        // 查询数据库获取更多用户信息
+        SysUser sysUser = sysUserMapper.selectById(loginUserDTO.getUserId());
+        if (sysUser == null) {
+            throw new ServiceException("用户不存在", EnumCode.INVALID_PARA.getCode());
+        }
+
+        // 将数据库中的用户信息转换为 DTO
+        SysUserLoginDTO sysUserLoginDTO = new SysUserLoginDTO();
+        BeanUtil.copyProperties(loginUserDTO, sysUserLoginDTO);
+        BeanUtil.copyProperties(sysUser, sysUserLoginDTO);
+        return sysUserLoginDTO;
     }
 }

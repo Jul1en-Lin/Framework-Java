@@ -4,6 +4,8 @@ package com.lien.adminservice.user.controller;
 import com.lien.adminservice.user.domain.dto.PasswordLoginDTO;
 import com.lien.adminservice.user.domain.dto.SysUserDTO;
 import com.lien.adminservice.user.domain.dto.SysUserListReqDTO;
+import com.lien.adminservice.user.domain.dto.SysUserLoginDTO;
+import com.lien.adminservice.user.domain.vo.SysUserLoginVO;
 import com.lien.adminservice.user.domain.vo.SysUserVO;
 import com.lien.adminservice.user.service.ISysUserService;
 import com.lien.common.core.utils.BeanUtil;
@@ -12,10 +14,7 @@ import domain.dto.TokenDTO;
 import domain.vo.TokenVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -69,5 +68,15 @@ public class SysUserController {
                 .map(SysUserDTO::convertToVO)
                 .collect(Collectors.toList())
         );
+    }
+
+    /**
+     * 从请求中拿到令牌 Header 获取 B 端登录用户信息
+     * @return B 端用户信息VO
+     */
+    @GetMapping("/login/get_info")
+    public Result<SysUserLoginVO> getLoginUser() {
+        SysUserLoginDTO userLoginDTO = sysUserService.getLoginUser();
+        return Result.success(userLoginDTO.convertToVO());
     }
 }
