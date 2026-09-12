@@ -3,7 +3,9 @@ package com.lien.adminservice.user.service.impl;
 
 import cn.hutool.crypto.digest.DigestUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.lien.adminservice.dict.service.ISysDictionaryService;
 import com.lien.adminservice.user.domain.dto.PasswordLoginDTO;
+import com.lien.adminservice.user.domain.dto.SysUserDTO;
 import com.lien.adminservice.user.domain.entity.SysUser;
 import com.lien.adminservice.user.mapper.SysUserMapper;
 import com.lien.adminservice.user.service.ISysUserService;
@@ -13,8 +15,10 @@ import domain.EnumCode;
 import domain.dto.LoginUserDTO;
 import domain.dto.TokenDTO;
 import domain.exception.ServiceException;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import service.TokenService;
 
 
@@ -29,6 +33,11 @@ public class SysUserServiceImpl implements ISysUserService {
 
     @Autowired
     private TokenService tokenService;
+
+    @Autowired
+    private ISysDictionaryService sysDictionaryService;
+
+    private static final String STATUS_DISABLE = "disable";
 
     @Override
     public TokenDTO login(PasswordLoginDTO passwordLoginDTO) {
@@ -59,7 +68,7 @@ public class SysUserServiceImpl implements ISysUserService {
         }
 
         // 校验用户状态（若为 disable 则无法登录）
-        if (sysUser.getStatus().equals("diable")) {
+        if (STATUS_DISABLE.equals(sysUser.getStatus())) {
             throw new ServiceException(EnumCode.USER_DISABLE);
         }
 
@@ -70,5 +79,73 @@ public class SysUserServiceImpl implements ISysUserService {
         loginUserDTO.setUserFrom("sys");
         TokenDTO token = tokenService.createToken(loginUserDTO);
         return token;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long addOrEdit(SysUserDTO sysUserDTO) {
+        SysUser sysUser = new SysUser();
+
+        // 处理新增的逻辑
+        if (sysUserDTO.getUserId() == null) {
+            // 校验手机号
+            if (!VerifyUtil.checkPhone(sysUserDTO.getPhoneNumber())) {
+                throw new ServiceException("手机格式错误", EnumCode.INVALID_PARA.getCode());
+            }
+//            // 校验密码
+//            if (StringUtils.isEmpty(sysUserDTO.getPassword())) {
+//                throw new ServiceException("密码校验失败", EnumCode.INVALID_PARA.getCode());
+//            }
+
+            // 手机号唯一性判断
+            String encryptedPhone = AESUtil.encryptHex(sysUserDTO.getPhoneNumber());
+            SysUser existSysUser = sysUserMapper.selectOne(new LambdaQueryWrapper<SysUser>()
+                    .eq(SysUser::getPhoneNumber,encryptedPhone));
+            if (existSysUser != null) {
+                throw new ServiceException("手机号已经被占用", EnumCode.INVALID_PARA.getCode());
+            }
+
+            // 判断身份信息在字典数据里是否包含
+            if (sysDictionaryService.getDicDataByKey(sysUserDTO.getIdentity()) == null) {
+                throw new ServiceException("用户身份错误", EnumCode.INVALID_PARA.getCode());
+            }
+
+            // 执行新增用户逻辑
+            sysUser.setPhoneNumber(AESUtil.encryptHex(sysUserDTO.getPhoneNumber()));
+            sysUser.setPassword(DigestUtil.sha256Hex(sysUserDTO.getPassword()));
+            sysUser.setIdentity(sysUserDTO.getIdentity());
+            sysUser.setStatus(sysUserDTO.getStatus());
+            sysUser.setNickName(sysUserDTO.getNickName());
+            if (StringUtils.isNotBlank(sysUserDTO.getRemark())) {
+                sysUser.setRemark(sysUserDTO.getRemark());
+            }
+            sysUserMapper.insert(sysUser);
+            return sysUser.getId();
+        }
+
+        // 跳转到用户信息编辑逻辑
+        sysUser.setId(sysUserDTO.getUserId());
+        SysUser existUser = sysUserMapper.selectById(sysUserDTO.getUserId());
+        if (existUser == null) {
+           throw new ServiceException("用户不存在", EnumCode.INVALID_PARA.getCode());
+        }
+        // 判断用户状态，若为不合法字段则不允许编辑
+        if (sysDictionaryService.getDicDataByKey(sysUserDTO.getStatus()) == null) {
+            throw new ServiceException("用户状态错误，不允许编辑", EnumCode.INVALID_PARA.getCode());
+        }
+        // 如果用户状态 status 设置为 disable 则视为踢人
+        if (STATUS_DISABLE.equals(sysUserDTO.getStatus())) {
+            tokenService.delLoginUser(sysUserDTO.getUserId(), "sys");
+        }
+
+        // 除了密码和手机号之外的其他字段都可以编辑
+        sysUser.setIdentity(sysUserDTO.getIdentity());
+        sysUser.setNickName(sysUserDTO.getNickName());
+        sysUser.setStatus(sysUserDTO.getStatus());
+        sysUser.setRemark(sysUserDTO.getRemark());
+        sysUserMapper.updateById(sysUser);
+
+        return sysUser.getId();
+
     }
 }

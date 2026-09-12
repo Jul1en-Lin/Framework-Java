@@ -2,6 +2,7 @@ package com.lien.adminservice.user.service;
 
 
 import com.lien.adminservice.user.domain.dto.PasswordLoginDTO;
+import com.lien.adminservice.user.domain.dto.SysUserDTO;
 import domain.dto.TokenDTO;
 
 /**
@@ -16,4 +17,10 @@ public interface ISysUserService {
      */
     TokenDTO login(PasswordLoginDTO passwordLoginDTO);
 
+    /**
+     * 新增或编辑用户
+     * @param sysUserDTO B端用户信息
+     * @return 用户ID
+     */
+    Long addOrEdit(SysUserDTO sysUserDTO);
 }

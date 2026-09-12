@@ -2,6 +2,7 @@ package com.lien.adminservice.user.controller;
 
 
 import com.lien.adminservice.user.domain.dto.PasswordLoginDTO;
+import com.lien.adminservice.user.domain.dto.SysUserDTO;
 import com.lien.adminservice.user.service.ISysUserService;
 import com.lien.common.core.utils.BeanUtil;
 import domain.Result;
@@ -38,4 +39,16 @@ public class SysUserController {
         BeanUtil.copyProperties(tokenDTO, result);
         return Result.success(result);
     }
+
+
+    /**
+     * 新增或编辑用户
+     * @param sysUserDTO B端用户信息
+     * @return  用户ID
+     */
+    @PostMapping("/add_edit")
+    public Result<Long> addOrEditUser(@Validated @RequestBody SysUserDTO sysUserDTO) {
+        return Result.success(sysUserService.addOrEdit(sysUserDTO));
+    }
+    
 }
