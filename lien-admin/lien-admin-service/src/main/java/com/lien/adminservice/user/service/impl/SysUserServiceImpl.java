@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.lien.adminservice.dict.service.ISysDictionaryService;
 import com.lien.adminservice.user.domain.dto.PasswordLoginDTO;
 import com.lien.adminservice.user.domain.dto.SysUserDTO;
+import com.lien.adminservice.user.domain.dto.SysUserListReqDTO;
 import com.lien.adminservice.user.domain.entity.SysUser;
 import com.lien.adminservice.user.mapper.SysUserMapper;
 import com.lien.adminservice.user.service.ISysUserService;
@@ -20,6 +21,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import service.TokenService;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
 
 
 /**
@@ -147,5 +152,37 @@ public class SysUserServiceImpl implements ISysUserService {
 
         return sysUser.getId();
 
+    }
+
+    /**
+     * @param sysUserListReqDTO 用户查询 DTO
+     * @return
+     */
+    @Override
+    public List<SysUserDTO> getUserList(SysUserListReqDTO sysUserListReqDTO) {
+        // 构造查询条件
+        LambdaQueryWrapper<SysUser> queryWrapper = new LambdaQueryWrapper<>();
+        if (StringUtils.isNotBlank(sysUserListReqDTO.getPhoneNumber())) {
+            queryWrapper.eq(SysUser::getPhoneNumber, AESUtil.encryptHex(sysUserListReqDTO.getPhoneNumber()));
+        }
+        if (sysUserListReqDTO.getUserId() != null) {
+            queryWrapper.eq(SysUser::getId, sysUserListReqDTO.getUserId());
+        }
+        if (StringUtils.isNotBlank(sysUserListReqDTO.getStatus())) {
+            queryWrapper.eq(SysUser::getStatus, sysUserListReqDTO.getStatus());
+        }
+
+        // 查询数据
+        List<SysUser> sysUsers = sysUserMapper.selectList(queryWrapper);
+        return sysUsers.stream().map(sysUser -> {
+            SysUserDTO sysUserDTO = new SysUserDTO();
+            sysUserDTO.setUserId(sysUser.getId());
+            sysUserDTO.setIdentity(sysUser.getIdentity());
+            sysUserDTO.setPhoneNumber(AESUtil.decryptHex(sysUser.getPhoneNumber()));
+            sysUserDTO.setNickName(sysUser.getNickName());
+            sysUserDTO.setStatus(sysUser.getStatus());
+            sysUserDTO.setRemark(sysUser.getRemark());
+            return sysUserDTO;
+        }).collect(Collectors.toList());
     }
 }

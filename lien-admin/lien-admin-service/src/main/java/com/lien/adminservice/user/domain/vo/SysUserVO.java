@@ -2,11 +2,13 @@ package com.lien.adminservice.user.domain.vo;
 
 import lombok.Data;
 
+import java.io.Serializable;
+
 /**
  * B 端用户查询VO
  */
 @Data
-public class SysUserVO {
+public class SysUserVO implements Serializable {
     /**
      * 用户ID
      */

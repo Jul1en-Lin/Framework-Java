@@ -3,7 +3,10 @@ package com.lien.adminservice.user.service;
 
 import com.lien.adminservice.user.domain.dto.PasswordLoginDTO;
 import com.lien.adminservice.user.domain.dto.SysUserDTO;
+import com.lien.adminservice.user.domain.dto.SysUserListReqDTO;
 import domain.dto.TokenDTO;
+
+import java.util.List;
 
 /**
  * B端用户服务接口
@@ -23,4 +26,11 @@ public interface ISysUserService {
      * @return 用户ID
      */
     Long addOrEdit(SysUserDTO sysUserDTO);
+
+    /**
+     * 获取 B 端用户列表
+     * @param sysUserListReqDTO 用户查询 DTO
+     * @return B 端用户列表
+     */
+    List<SysUserDTO> getUserList(SysUserListReqDTO sysUserListReqDTO);
 }

@@ -3,6 +3,8 @@ package com.lien.adminservice.user.controller;
 
 import com.lien.adminservice.user.domain.dto.PasswordLoginDTO;
 import com.lien.adminservice.user.domain.dto.SysUserDTO;
+import com.lien.adminservice.user.domain.dto.SysUserListReqDTO;
+import com.lien.adminservice.user.domain.vo.SysUserVO;
 import com.lien.adminservice.user.service.ISysUserService;
 import com.lien.common.core.utils.BeanUtil;
 import domain.Result;
@@ -14,6 +16,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+import java.util.stream.Collectors;
 
 
 /**
@@ -50,5 +55,19 @@ public class SysUserController {
     public Result<Long> addOrEditUser(@Validated @RequestBody SysUserDTO sysUserDTO) {
         return Result.success(sysUserService.addOrEdit(sysUserDTO));
     }
-    
+
+
+    /**
+     * 查询 B 端用户
+     * @param sysUserListReqDTO 用户查询 DTO
+     * @return B 端用户列表
+     */
+    @PostMapping("/list")
+    public Result<List<SysUserVO>> getUserList(@RequestBody SysUserListReqDTO sysUserListReqDTO) {
+        List<SysUserDTO> sysUserDTOS = sysUserService.getUserList(sysUserListReqDTO);
+        return Result.success(sysUserDTOS.stream()
+                .map(SysUserDTO::convertToVO)
+                .collect(Collectors.toList())
+        );
+    }
 }
