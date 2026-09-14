@@ -29,6 +29,7 @@
         <module>lien-common</module>
         <module>lien-file</module>
         <module>lien-admin</module>
+        <module>lien-portal</module>
     </modules>
     <scm>
         <connection/>
