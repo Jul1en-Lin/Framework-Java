@@ -223,4 +223,78 @@ class AppUserServiceImplTest {
             assertThat(result.getList().get(1).getNickName()).isEqualTo("用户2");
         }
     }
+
+    @Nested
+    @DisplayName("findById - 按 ID 查询 C 端用户测试")
+    class FindByIdTests {
+
+        @Test
+        @DisplayName("用户存在：应正确映射并解密手机号")
+        void findById_whenUserExists_shouldMapAndDecryptPhone() {
+            AppUser user = new AppUser();
+            user.setId(10L);
+            user.setPhoneNumber(AESUtil.encryptHex("13800138000"));
+            user.setNickName("测试用户");
+            when(appUserMapper.selectById(10L)).thenReturn(user);
+
+            AppUserDTO result = appUserService.findById(10L);
+
+            assertThat(result.getId()).isEqualTo(10L);
+            assertThat(result.getNickName()).isEqualTo("测试用户");
+            assertThat(result.getPhoneNumber()).isEqualTo("13800138000");
+            verify(appUserMapper).selectById(10L);
+        }
+
+        @Test
+        @DisplayName("用户不存在：返回 null")
+        void findById_whenUserDoesNotExist_shouldReturnNull() {
+            when(appUserMapper.selectById(99L)).thenReturn(null);
+
+            assertThat(appUserService.findById(99L)).isNull();
+            verify(appUserMapper).selectById(99L);
+        }
+    }
+
+    @Nested
+    @DisplayName("listByIds - 按多个 ID 查询 C 端用户测试")
+    class ListByIdsTests {
+
+        @Test
+        @DisplayName("ID 列表为空：返回空列表且不查询数据库")
+        void listByIds_whenIdsEmpty_shouldReturnEmptyWithoutQuery() {
+            assertThat(appUserService.listByIds(Collections.emptyList())).isEmpty();
+
+            org.mockito.Mockito.verify(appUserMapper, org.mockito.Mockito.never()).selectList(any());
+        }
+
+        @Test
+        @DisplayName("查询成功：应正确映射所有用户并解密手机号")
+        void listByIds_whenUsersExist_shouldMapAllAndDecryptPhones() {
+            AppUser first = new AppUser();
+            first.setId(1L);
+            first.setPhoneNumber(AESUtil.encryptHex("13800000001"));
+            first.setNickName("用户1");
+            AppUser second = new AppUser();
+            second.setId(2L);
+            second.setPhoneNumber(AESUtil.encryptHex("13800000002"));
+            second.setNickName("用户2");
+            when(appUserMapper.selectList(any(LambdaQueryWrapper.class)))
+                    .thenReturn(List.of(first, second));
+
+            List<AppUserDTO> result = appUserService.listByIds(List.of(1L, 2L));
+
+            assertThat(result).extracting(AppUserDTO::getId).containsExactly(1L, 2L);
+            assertThat(result).extracting(AppUserDTO::getPhoneNumber)
+                    .containsExactly("13800000001", "13800000002");
+            verify(appUserMapper).selectList(any(LambdaQueryWrapper.class));
+        }
+
+        @Test
+        @DisplayName("没有匹配用户：返回空列表")
+        void listByIds_whenNoUsersExist_shouldReturnEmpty() {
+            when(appUserMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(Collections.emptyList());
+
+            assertThat(appUserService.listByIds(List.of(99L))).isEmpty();
+        }
+    }
 }

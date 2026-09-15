@@ -24,6 +24,7 @@ import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 
 /**
@@ -150,5 +151,49 @@ public class AppUserServiceImpl implements IAppUserService {
         result.setTotalPages(Integer.parseInt(String.valueOf(appUserPage.getPages())));
         result.setList(appUserDTOList);
         return result;
+    }
+
+    /**
+     * @param userId 用户ID
+     * @return C 端用户信息 DTO
+     */
+    @Override
+    public AppUserDTO findById(Long userId) {
+        // 查询数据库
+        AppUser appUser = appUserMapper.selectById(userId);
+        if (appUser == null) {
+            return null;
+        }
+        // 转换对象
+        AppUserDTO appUserDTO = new AppUserDTO();
+        BeanUtil.copyProperties(appUser, appUserDTO);
+        // 解密手机号，便于向管理人员展示
+        appUserDTO.setPhoneNumber(AESUtil.decryptHex(appUser.getPhoneNumber()));
+        return appUserDTO;
+    }
+
+    /**
+     * @param userIds 多个用户ID
+     * @return C 端用户信息列表 VO
+     */
+    @Override
+    public List<AppUserDTO> listByIds(List<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return List.of();
+        }
+        // 查询数据库
+        List<AppUser> appUserList = appUserMapper.selectList(new LambdaQueryWrapper<AppUser>().in(AppUser::getId, userIds));
+        if (appUserList == null || appUserList.isEmpty()) {
+            return List.of();
+        }
+        // 转换对象
+        return appUserList.stream()
+                .map(appUser -> {
+                    AppUserDTO appUserDTO = new AppUserDTO();
+                    BeanUtil.copyProperties(appUser, appUserDTO);
+                    // 解密手机号，便于向管理人员展示
+                    appUserDTO.setPhoneNumber(AESUtil.decryptHex(appUser.getPhoneNumber()));
+                    return appUserDTO;
+                }).collect(Collectors.toList());
     }
 }

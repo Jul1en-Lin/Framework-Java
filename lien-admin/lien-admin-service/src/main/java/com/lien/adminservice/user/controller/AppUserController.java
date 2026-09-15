@@ -18,6 +18,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 /**
  * C 端用户相关接口
  */
@@ -59,6 +62,35 @@ public class AppUserController implements AppUserFeignClient {
     public Result<Long> edit(UserEditReqDTO userEditReqDTO) {
         Long userId = appUserService.edit(userEditReqDTO);
         return Result.success(userId);
+    }
+
+
+    /**
+     * @param userId 用户ID
+     * @return C 端用户信息 VO
+     */
+    @Override
+    public Result<AppUserVO> findById(Long userId) {
+        AppUserDTO appUserDTO = appUserService.findById(userId);
+        if (appUserDTO == null) {
+            return Result.success();
+        }
+        return Result.success(appUserDTO.convertToVO());
+    }
+
+    /**
+     * @param userIds 用户ID
+     * @return C 端用户信息列表
+     */
+    @Override
+    public Result<List<AppUserVO>> listByIds(List<Long> userIds) {
+        List<AppUserDTO> appUserDTOList = appUserService.listByIds(userIds);
+        if (appUserDTOList == null || appUserDTOList.isEmpty()) {
+            return Result.success();
+        }
+        List<AppUserVO> result = appUserDTOList.stream()
+                .map(AppUserDTO::convertToVO).collect(Collectors.toList());
+        return Result.success(result);
     }
 
     /**

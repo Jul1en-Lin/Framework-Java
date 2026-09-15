@@ -4,14 +4,16 @@ package com.lien.api.appuser.feign;
 import com.lien.api.appuser.domain.dto.UserEditReqDTO;
 import com.lien.api.appuser.domain.vo.AppUserVO;
 import domain.Result;
-import org.springframework.cloud.context.config.annotation.RefreshScope;
-import org.springframework.cloud.openfeign.EnableFeignClients;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
+
+import java.util.List;
 
 /**
  * C 端用户数据操作远程调用
@@ -44,4 +46,19 @@ public interface AppUserFeignClient {
     Result<Long> edit(@RequestBody @Validated UserEditReqDTO userEditReqDTO);
 
 
+    /**
+     * 根据用户 ID 获取用户登录信息
+     * @param userId 用户ID
+     * @return C 端用户信息 VO
+     */
+    @GetMapping("/id_find")
+    Result<AppUserVO> findById(@RequestParam @NotNull(message = "用户ID不能为空") Long userId);
+
+    /**
+     * 根据多个用户 ID 获取用户登录信息列表
+     * @param userIds 多个用户ID
+     * @return C 端用户信息列表 VO
+     */
+    @GetMapping("/ids_find")
+    Result<List<AppUserVO>> listByIds(@RequestParam @NotEmpty(message = "用户ID不能为空") List<Long> userIds);
 }

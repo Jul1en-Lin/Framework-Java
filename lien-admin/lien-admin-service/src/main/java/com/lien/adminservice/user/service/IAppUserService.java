@@ -5,6 +5,8 @@ import com.lien.api.appuser.domain.dto.AppUserDTO;
 import com.lien.api.appuser.domain.dto.UserEditReqDTO;
 import com.lien.common.core.domain.dto.BasePageDTO;
 
+import java.util.List;
+
 public interface IAppUserService {
 
     /**
@@ -34,4 +36,18 @@ public interface IAppUserService {
      * @return C 端用户列表分页结果
      */
     BasePageDTO<AppUserDTO> getUserList(AppUserListReqDTO appUserListReqDTO);
+
+    /**
+     * 根据用户 ID 获取用户登录信息
+     * @param userId 用户ID
+     * @return C 端用户信息 DTO
+     */
+    AppUserDTO findById(Long userId);
+
+    /**
+     * 根据多个用户 ID 获取用户登录信息列表
+     * @param userIds 多个用户ID
+     * @return C 端用户信息列表 VO
+     */
+    List<AppUserDTO> listByIds(List<Long> userIds);
 }
