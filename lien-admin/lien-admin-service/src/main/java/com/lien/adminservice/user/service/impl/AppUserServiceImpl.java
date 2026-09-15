@@ -1,5 +1,6 @@
 package com.lien.adminservice.user.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.lien.adminservice.user.domain.entity.AppUser;
 import com.lien.adminservice.user.mapper.AppUserMapper;
 import com.lien.adminservice.user.service.IAppUserService;
@@ -46,9 +47,27 @@ public class AppUserServiceImpl implements IAppUserService {
         appUserMapper.insert(appUser);
         // 转换对象
         AppUserDTO appUserDTO = new AppUserDTO();
-        appUserDTO.setUserId(appUser.getId());
         BeanUtil.copyProperties(appUser, appUserDTO);
+        return appUserDTO;
+    }
 
+    /**
+     * @param openId 用户微信ID
+     * @return
+     */
+    @Override
+    public AppUserDTO findByOpenId(String openId) {
+        // 查询数据库
+        LambdaQueryWrapper<AppUser> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(AppUser::getOpenId, openId);
+        AppUser appUser = appUserMapper.selectOne(queryWrapper);
+        if (appUser == null) {
+            return null;
+        }
+
+        AppUserDTO appUserDTO = new AppUserDTO();
+        BeanUtil.copyProperties(appUser, appUserDTO);
+        // appUserDTO.setId(appUser.getId());
         return appUserDTO;
     }
 }

@@ -1,6 +1,7 @@
 package domain.dto;
 
 
+import domain.vo.TokenVO;
 import lombok.Getter;
 import lombok.Setter;
 

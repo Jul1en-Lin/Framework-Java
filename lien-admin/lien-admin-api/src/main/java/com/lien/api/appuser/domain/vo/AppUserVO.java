@@ -10,7 +10,7 @@ import lombok.Data;
 public class AppUserVO {
 
     /**
-     * C端用户ID
+     * C 端用户ID
      */
     private Long userId;
 

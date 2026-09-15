@@ -7,9 +7,12 @@ import domain.constants.TokenConstants;
 import domain.dto.LoginUserDTO;
 import domain.dto.TokenDTO;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.validation.annotation.Validated;
 import utils.JwtUtil;
 import utils.SecurityUtil;
 
@@ -19,6 +22,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Token 令牌服务类
  */
+@Validated
 @Service
 public class TokenService {
 
@@ -32,17 +36,23 @@ public class TokenService {
 
     /**
      * 根据登录用户信息生成 Token 令牌（需Id、UserFrom、UserName即可）
+     * <p>
+     * userId、userFrom、userName 由调用方负责赋值，缺失会在方法入口被参数校验拦截；
+     * userToken、loginTime、expireTime 由本方法内部自动填充。
      * @param loginUserDTO 登录用户信息
      * @return 生成的 Token 令牌
      */
-    public TokenDTO createToken(LoginUserDTO loginUserDTO) {
+    public TokenDTO createToken(@NotNull(message = "登录用户信息不完整") @Valid LoginUserDTO loginUserDTO) {
+        // 每次都会生成一个新的 userToken，每次登录都新增一条 Redis 记录。故要移除已有的旧 token，保持一个用户只有一个 redis token 缓存
+        delLoginUser(loginUserDTO.getUserId(), loginUserDTO.getUserFrom());
+
         String userToken = UUID.randomUUID().toString();
         loginUserDTO.setUserToken(userToken);
         // 缓存用户信息
         setAndCacheToken(loginUserDTO);
 
         // 生成 Token 令牌逻辑
-        //  1 生成原始数据声明
+        // 1 生成原始数据声明
         Map<String, Object> claims = new HashMap<>();
         claims.put(SecurityConstants.USER_KEY, userToken);
         claims.put(SecurityConstants.USER_ID, loginUserDTO.getUserId());

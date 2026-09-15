@@ -15,7 +15,7 @@ public class AppUserDTO {
     /**
      * C 端用户ID
      */
-    private Long userId;
+    private Long id;
 
     /**
      * 用户昵称
@@ -44,6 +44,7 @@ public class AppUserDTO {
     public AppUserVO convertToVO() {
         AppUserVO appUserVO = new AppUserVO();
         BeanUtil.copyProperties(this, appUserVO);
+        appUserVO.setUserId(this.id);
         return appUserVO;
     }
 }

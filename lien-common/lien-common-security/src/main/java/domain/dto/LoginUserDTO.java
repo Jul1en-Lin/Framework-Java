@@ -1,5 +1,7 @@
 package domain.dto;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import lombok.Getter;
 
@@ -15,18 +17,21 @@ public class LoginUserDTO {
     private String userToken;
 
     /**
-     * 用户ID
+     * 用户ID（生成令牌时必须赋值）
      */
+    @NotNull(message = "用户ID不能为空")
     private Long userId;
 
     /**
-     * 用户来源
+     * 用户来源（生成令牌时必须赋值）
      */
+    @NotBlank(message = "用户来源不能为空")
     private String userFrom;
 
     /**
-     * 用户名
+     * 用户名（生成令牌时必须赋值）
      */
+    @NotBlank(message = "用户名不能为空")
     private String userName;
 
     // 因为是登录用户信息，所以额外记录登录时间和过期时间，方便后续做登录状态的判断

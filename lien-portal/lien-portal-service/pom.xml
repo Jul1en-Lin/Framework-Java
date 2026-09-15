@@ -53,6 +53,18 @@
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
         </dependency>
+
+        <dependency>
+           <groupId>com.lien</groupId>
+           <artifactId>lien-admin-api</artifactId>
+           <version>0.0.1-SNAPSHOT</version>
+       </dependency>
+
+        <dependency>
+            <groupId>com.lien</groupId>
+            <artifactId>lien-common-security</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+        </dependency>
     </dependencies>
 
 </project>
