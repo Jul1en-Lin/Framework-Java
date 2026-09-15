@@ -1,12 +1,16 @@
 package com.lien.adminservice.user.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.lien.adminservice.user.config.RabbitMqConfig;
+import com.lien.adminservice.user.domain.dto.AppUserListReqDTO;
 import com.lien.adminservice.user.domain.entity.AppUser;
 import com.lien.adminservice.user.mapper.AppUserMapper;
 import com.lien.adminservice.user.service.IAppUserService;
 import com.lien.api.appuser.domain.dto.AppUserDTO;
 import com.lien.api.appuser.domain.dto.UserEditReqDTO;
+import com.lien.common.core.domain.dto.BasePageDTO;
+import com.lien.common.core.utils.AESUtil;
 import com.lien.common.core.utils.BeanUtil;
 import domain.EnumCode;
 import domain.exception.ServiceException;
@@ -18,6 +22,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
 
 
 /**
@@ -101,5 +107,47 @@ public class AppUserServiceImpl implements IAppUserService {
             log.error("编辑用户发送消息失败", e);
         }
         return appUser.getId();
+    }
+
+    /**
+     * @param appUserListReqDTO 查询 C 端用户参数 DTO
+     * @return C 端用户列表分页结果
+     */
+    @Override
+    public BasePageDTO<AppUserDTO> getUserList(AppUserListReqDTO appUserListReqDTO) {
+        LambdaQueryWrapper<AppUser> queryWrapper = new LambdaQueryWrapper<>();
+        // 查询条件拼接
+        if (appUserListReqDTO.getUserId() != null) {
+            queryWrapper.eq(AppUser::getId, appUserListReqDTO.getUserId());
+        }
+        // 手机号查询时需要加密后再查询
+        if (StringUtils.isNotBlank(appUserListReqDTO.getPhoneNumber())) {
+            queryWrapper.eq(AppUser::getPhoneNumber, AESUtil.encryptHex(appUserListReqDTO.getPhoneNumber()));
+        }
+        if (StringUtils.isNotBlank(appUserListReqDTO.getNickName())) {
+            queryWrapper.like(AppUser::getNickName, appUserListReqDTO.getNickName());
+        }
+        if (StringUtils.isNotBlank(appUserListReqDTO.getOpenId())) {
+            queryWrapper.eq(AppUser::getOpenId, appUserListReqDTO.getOpenId());
+        }
+        // 分页查询
+        long pageSize = (long) appUserListReqDTO.getPageSize();
+        long pageNumber = (long) appUserListReqDTO.getPageNo();
+        Page<AppUser> appUserPage = appUserMapper.selectPage(new Page<>(pageNumber, pageSize), queryWrapper);
+
+        // 对象转换
+        List<AppUserDTO> appUserDTOList = appUserPage.getRecords().stream()
+                .map(appUser -> {
+                    AppUserDTO appUserDTO = new AppUserDTO();
+                    BeanUtil.copyProperties(appUser, appUserDTO);
+                    return appUserDTO;
+                }).toList();
+
+        // 赋值
+        BasePageDTO<AppUserDTO> result = new BasePageDTO<>();
+        result.setTotals((int) appUserPage.getTotal());
+        result.setTotalPages(Integer.parseInt(String.valueOf(appUserPage.getPages())));
+        result.setList(appUserDTOList);
+        return result;
     }
 }

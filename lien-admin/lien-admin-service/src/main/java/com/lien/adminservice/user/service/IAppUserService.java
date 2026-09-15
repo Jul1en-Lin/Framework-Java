@@ -1,7 +1,9 @@
 package com.lien.adminservice.user.service;
 
+import com.lien.adminservice.user.domain.dto.AppUserListReqDTO;
 import com.lien.api.appuser.domain.dto.AppUserDTO;
 import com.lien.api.appuser.domain.dto.UserEditReqDTO;
+import com.lien.common.core.domain.dto.BasePageDTO;
 
 public interface IAppUserService {
 
@@ -25,4 +27,11 @@ public interface IAppUserService {
      * @return 所编辑用户的 ID
      */
     Long edit(UserEditReqDTO userEditReqDTO);
+
+    /**
+     * 查询 C 端用户
+     * @param appUserListReqDTO 查询 C 端用户参数 DTO
+     * @return C 端用户列表分页结果
+     */
+    BasePageDTO<AppUserDTO> getUserList(AppUserListReqDTO appUserListReqDTO);
 }

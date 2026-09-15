@@ -42,4 +42,6 @@ public interface AppUserFeignClient {
      */
     @PostMapping("/edit")
     Result<Long> edit(@RequestBody @Validated UserEditReqDTO userEditReqDTO);
+
+
 }
