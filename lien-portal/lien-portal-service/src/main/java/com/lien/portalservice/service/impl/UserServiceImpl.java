@@ -3,7 +3,9 @@ package com.lien.portalservice.service.impl;
 import com.lien.api.appuser.domain.dto.UserEditReqDTO;
 import com.lien.api.appuser.domain.vo.AppUserVO;
 import com.lien.api.appuser.feign.AppUserFeignClient;
+import com.lien.common.core.utils.BeanUtil;
 import com.lien.portalservice.domain.dto.LoginDTO;
+import com.lien.portalservice.domain.dto.UserDTO;
 import com.lien.portalservice.domain.dto.WechatLoginDTO;
 import com.lien.portalservice.service.UserService;
 import domain.EnumCode;
@@ -56,6 +58,28 @@ public class UserServiceImpl implements UserService {
     @Override
     public Long edit(UserEditReqDTO userEditReqDTO) {
        return appUserFeignClient.edit(userEditReqDTO).getData();
+    }
+
+    /**
+     * @return C 端用户登录信息 DTO
+     */
+    @Override
+    public UserDTO getLoginUser() {
+        // 获取当前登录的用户信息
+        LoginUserDTO loginUserDTO = tokenService.getUserInfo();
+        if (loginUserDTO == null) {
+            throw new ServiceException(EnumCode.TOKEN_INVALID);
+        }
+        // 远程调用获取用户信息
+        Result<AppUserVO> result = appUserFeignClient.findById(loginUserDTO.getUserId());
+        if (result == null || result.getCode() != EnumCode.SUCCESS.getCode() || result.getData() == null) {
+            throw new ServiceException("查询用户失败", EnumCode.FAILED.getCode());
+        }
+        // 对象拼装，补全 UserDTO 所需的全部字段
+        UserDTO userDTO = new UserDTO();
+        BeanUtil.copyProperties(loginUserDTO, userDTO);
+        BeanUtil.copyProperties(result.getData(), userDTO);
+        return userDTO;
     }
 
     /**

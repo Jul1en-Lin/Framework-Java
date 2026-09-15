@@ -3,16 +3,14 @@ package com.lien.portalservice.controller;
 import com.lien.api.appuser.domain.dto.UserEditReqDTO;
 import com.lien.common.core.utils.BeanUtil;
 import com.lien.portalservice.domain.dto.WechatLoginDTO;
+import com.lien.portalservice.domain.vo.UserVO;
 import com.lien.portalservice.service.UserService;
 import domain.Result;
 import domain.dto.TokenDTO;
 import domain.vo.TokenVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/user")
@@ -43,5 +41,14 @@ public class UserController {
     public Result<Long> edit(@RequestBody @Validated UserEditReqDTO userEditReqDTO) {
         Long userId = userService.edit(userEditReqDTO);
         return Result.success(userId);
+    }
+
+    /**
+     * 获取 C 端用户登录信息
+     * @return 用户信息VO
+     */
+    @GetMapping("/login_info/get")
+    public Result<UserVO> getLoginUser() {
+        return Result.success(userService.getLoginUser().convertToVO());
     }
 }

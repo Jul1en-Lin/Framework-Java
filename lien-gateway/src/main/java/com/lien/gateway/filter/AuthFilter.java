@@ -8,6 +8,7 @@ import domain.EnumCode;
 import domain.constants.SecurityConstants;
 import domain.constants.TokenConstants;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -62,7 +63,11 @@ public class AuthFilter implements GlobalFilter, Ordered {
         }
         // 根据 Token 令牌获取有效信息
         Claims claims;
-        claims = JwtUtil.parseToken(token);
+        try {
+            claims = JwtUtil.parseToken(token);
+        } catch (JwtException | IllegalArgumentException e) {
+            return unauthorizedResponse(exchange, EnumCode.TOKEN_INVALID);
+        }
         if (claims == null) {
             return unauthorizedResponse(exchange, EnumCode.TOKEN_INVALID);
         }

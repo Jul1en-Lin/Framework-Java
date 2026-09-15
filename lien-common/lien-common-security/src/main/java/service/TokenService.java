@@ -6,6 +6,8 @@ import domain.constants.SecurityConstants;
 import domain.constants.TokenConstants;
 import domain.dto.LoginUserDTO;
 import domain.dto.TokenDTO;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -92,8 +94,14 @@ public class TokenService {
     public LoginUserDTO getUserInfoWithToken(String token) {
         LoginUserDTO result = null;
         if (StringUtils.isNotEmpty(token)) {
-            String userToken = JwtUtil.getUserKey(token);
-            result = redisService.getCacheObject((cacheTokenPrefixKey + userToken),LoginUserDTO.class);
+            try {
+                Claims claims = JwtUtil.parseToken(token);
+                String userToken = JwtUtil.getUserKey(claims);
+                result = redisService.getCacheObject((cacheTokenPrefixKey + userToken), LoginUserDTO.class);
+            } catch (JwtException | IllegalArgumentException e) {
+                // 非法或篡改的令牌按无效令牌处理，由调用方返回统一错误码
+                return null;
+            }
         }
         return result;
     }
