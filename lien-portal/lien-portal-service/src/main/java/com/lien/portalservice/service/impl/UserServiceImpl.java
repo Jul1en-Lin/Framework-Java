@@ -1,5 +1,6 @@
 package com.lien.portalservice.service.impl;
 
+import com.lien.api.appuser.domain.dto.UserEditReqDTO;
 import com.lien.api.appuser.domain.vo.AppUserVO;
 import com.lien.api.appuser.feign.AppUserFeignClient;
 import com.lien.portalservice.domain.dto.LoginDTO;
@@ -46,6 +47,15 @@ public class UserServiceImpl implements UserService {
 
         // 生成令牌并返回
         return tokenService.createToken(loginUserDTO);
+    }
+
+    /**
+     * @param userEditReqDTO C端用户编辑 DTO
+     * @return 所编辑用户的 ID
+     */
+    @Override
+    public Long edit(UserEditReqDTO userEditReqDTO) {
+       return appUserFeignClient.edit(userEditReqDTO).getData();
     }
 
     /**

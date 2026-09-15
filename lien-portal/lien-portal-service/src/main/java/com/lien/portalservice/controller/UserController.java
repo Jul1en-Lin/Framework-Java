@@ -1,5 +1,6 @@
 package com.lien.portalservice.controller;
 
+import com.lien.api.appuser.domain.dto.UserEditReqDTO;
 import com.lien.common.core.utils.BeanUtil;
 import com.lien.portalservice.domain.dto.WechatLoginDTO;
 import com.lien.portalservice.service.UserService;
@@ -31,5 +32,16 @@ public class UserController {
         TokenVO tokenVO = new TokenVO();
         BeanUtil.copyProperties(tokenDTO, tokenVO);
         return Result.success(tokenVO);
+    }
+
+    /**
+     * 修改用户信息
+     * @param userEditReqDTO C端用户编辑DTO
+     * @return 编辑用户的 Id
+     */
+    @PostMapping("/edit")
+    public Result<Long> edit(@RequestBody @Validated UserEditReqDTO userEditReqDTO) {
+        Long userId = userService.edit(userEditReqDTO);
+        return Result.success(userId);
     }
 }

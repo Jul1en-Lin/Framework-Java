@@ -1,15 +1,19 @@
 package com.lien.adminservice.user.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.lien.adminservice.user.config.RabbitMqConfig;
 import com.lien.adminservice.user.domain.entity.AppUser;
 import com.lien.adminservice.user.mapper.AppUserMapper;
 import com.lien.adminservice.user.service.IAppUserService;
 import com.lien.api.appuser.domain.dto.AppUserDTO;
+import com.lien.api.appuser.domain.dto.UserEditReqDTO;
 import com.lien.common.core.utils.BeanUtil;
 import domain.EnumCode;
 import domain.exception.ServiceException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.amqp.AmqpException;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
@@ -26,6 +30,9 @@ public class AppUserServiceImpl implements IAppUserService {
 
     @Autowired
     private AppUserMapper appUserMapper;
+
+    @Autowired
+    private RabbitTemplate rabbitTemplate;
 
     @Value("${appuser.info.defaultAvatar}")
     private String defaultAvatar;
@@ -69,5 +76,30 @@ public class AppUserServiceImpl implements IAppUserService {
         BeanUtil.copyProperties(appUser, appUserDTO);
         // appUserDTO.setId(appUser.getId());
         return appUserDTO;
+    }
+
+    /**
+     * @param userEditReqDTO C 端用户 DTO
+     */
+    @Override
+    public Long edit(UserEditReqDTO userEditReqDTO) {
+        AppUser appUser = appUserMapper.selectById(userEditReqDTO.getUserId());
+        if (appUser == null) {
+            throw new ServiceException("用户不存在", EnumCode.FAILED .getCode());
+        }
+        // 更新用户信息
+        appUser.setNickName(userEditReqDTO.getNickName());
+        appUser.setAvatar(userEditReqDTO.getAvatar());
+        appUserMapper.updateById(appUser);
+
+        // 分发广播消息
+        AppUserDTO appUserDTO = new AppUserDTO();
+        BeanUtil.copyProperties(appUser, appUserDTO);
+        try {
+            rabbitTemplate.convertAndSend(RabbitMqConfig.EXCHANGE_NAME, "", appUserDTO);
+        } catch (AmqpException e) {
+            log.error("编辑用户发送消息失败", e);
+        }
+        return appUser.getId();
     }
 }

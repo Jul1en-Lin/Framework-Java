@@ -1,6 +1,7 @@
 package com.lien.adminservice.user.service;
 
 import com.lien.api.appuser.domain.dto.AppUserDTO;
+import com.lien.api.appuser.domain.dto.UserEditReqDTO;
 
 public interface IAppUserService {
 
@@ -17,4 +18,11 @@ public interface IAppUserService {
      * @return C 端用户DTO
      */
     AppUserDTO findByOpenId(String openId);
+
+    /**
+     * 编辑C端用户
+     * @param userEditReqDTO C 端用户 DTO
+     * @return 所编辑用户的 ID
+     */
+    Long edit(UserEditReqDTO userEditReqDTO);
 }
