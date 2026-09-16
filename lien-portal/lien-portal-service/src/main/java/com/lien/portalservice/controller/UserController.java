@@ -51,4 +51,14 @@ public class UserController {
     public Result<UserVO> getLoginUser() {
         return Result.success(userService.getLoginUser().convertToVO());
     }
+
+    /**
+     * 退出登录
+     * @return Result<Void> null
+     */
+    @DeleteMapping("/logout")
+    Result<Void> logout() {
+        userService.logout();
+        return Result.success();
+    }
 }

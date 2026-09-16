@@ -29,4 +29,9 @@ public interface UserService {
      * @return C 端用户信息 DTO
      */
     UserDTO getLoginUser();
+
+    /**
+     * 退出登录
+     */
+    void logout();
 }

@@ -14,9 +14,12 @@ import domain.dto.LoginUserDTO;
 import domain.dto.TokenDTO;
 import domain.exception.ServiceException;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import service.TokenService;
+import utils.JwtUtil;
+import utils.SecurityUtil;
 
 @Slf4j
 @Service
@@ -80,6 +83,21 @@ public class UserServiceImpl implements UserService {
         BeanUtil.copyProperties(loginUserDTO, userDTO);
         BeanUtil.copyProperties(result.getData(), userDTO);
         return userDTO;
+    }
+
+    @Override
+    public void logout() {
+        // 1 解析令牌
+        String token = SecurityUtil.getToken();
+        if (StringUtils.isEmpty(token)) {
+            return;
+        }
+        String userName = JwtUtil.getUserName(token);
+        String userId = JwtUtil.getUserId(token);
+        log.info("{}退出系统, 用户ID{}", userName, userId);
+        // 2 删除用户缓存记录
+        String userFrom = JwtUtil.getUserFrom(token);
+        tokenService.delLoginUser(Long.valueOf(userId), userFrom);
     }
 
     /**
