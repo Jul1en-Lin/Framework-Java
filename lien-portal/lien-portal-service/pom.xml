@@ -17,6 +17,20 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
+    <build>
+        <plugins>
+            <!--
+                可执行服务模块：显式声明 boot 插件即可。
+                repackage execution 由 spring-boot-starter-parent 的 pluginManagement 提供，
+                这里不要重复声明 <executions>，否则 repackage 会执行两次。
+            -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+
     <dependencies>
         <!-- SpringCloud Alibaba Nacos discovery -->
         <dependency>
