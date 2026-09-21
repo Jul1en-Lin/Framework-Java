@@ -1,0 +1,56 @@
+# 使用方式：docker compose --env-file ../.env -p frameworkjava-prd -f docker-compose-app.yml up -d --build
+services:
+  frameworkjava-admin:
+    build:
+      context: service/admin
+    image: frameworkjavaprd/lien-admin-service:1.0-SNAPSHOT
+    environment:
+      RUN_ENV: prd
+      NACOS_ADDR: frameworkjava-nacos:8848
+      NACOS_USERNAME: ${NACOS_USERNAME:?NACOS_USERNAME is required}
+      NACOS_PASSWORD: ${NACOS_PASSWORD:?NACOS_PASSWORD is required}
+    restart: always
+    networks:
+      - frameworkjava_network_prd
+
+  frameworkjava-file:
+    build:
+      context: service/file
+    image: frameworkjavaprd/lien-file-service:1.0-SNAPSHOT
+    environment:
+      RUN_ENV: prd
+      NACOS_ADDR: frameworkjava-nacos:8848
+      NACOS_USERNAME: ${NACOS_USERNAME:?NACOS_USERNAME is required}
+      NACOS_PASSWORD: ${NACOS_PASSWORD:?NACOS_PASSWORD is required}
+    restart: always
+    networks:
+      - frameworkjava_network_prd
+
+  frameworkjava-gateway:
+    build:
+      context: service/gateway
+    image: frameworkjavaprd/lien-gateway-service:1.0-SNAPSHOT
+    environment:
+      RUN_ENV: prd
+      NACOS_ADDR: frameworkjava-nacos:8848
+      NACOS_USERNAME: ${NACOS_USERNAME:?NACOS_USERNAME is required}
+      NACOS_PASSWORD: ${NACOS_PASSWORD:?NACOS_PASSWORD is required}
+    restart: always
+    networks:
+      - frameworkjava_network_prd
+
+  frameworkjava-portal:
+    build:
+      context: service/portal
+    image: frameworkjavaprd/lien-portal-service:1.0-SNAPSHOT
+    environment:
+      RUN_ENV: prd
+      NACOS_ADDR: frameworkjava-nacos:8848
+      NACOS_USERNAME: ${NACOS_USERNAME:?NACOS_USERNAME is required}
+      NACOS_PASSWORD: ${NACOS_PASSWORD:?NACOS_PASSWORD is required}
+    restart: always
+    networks:
+      - frameworkjava_network_prd
+
+networks:
+  frameworkjava_network_prd:

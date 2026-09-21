@@ -7,13 +7,13 @@ spring:
   cloud:
     nacos:
       discovery:
-        username: nacos
-        password: bite@123
+        username: ${NACOS_USERNAME}
+        password: ${NACOS_PASSWORD}
         namespace: frameworkjava-${RUN_ENV}
         server-addr: ${NACOS_ADDR}
       config:
-        username: nacos
-        password: bite@123
+        username: ${NACOS_USERNAME}
+        password: ${NACOS_PASSWORD}
         namespace: frameworkjava-${RUN_ENV}
         server-addr: ${NACOS_ADDR}
         file-extension: yaml

@@ -1,0 +1,125 @@
+# 使用方式：docker compose --env-file ../.env -p frameworkjava-prd -f docker-compose-mid.yml up -d
+services:
+  frameworkjava-mysql:
+    image: mysql:8.4.2
+    volumes:
+      - ../data/frameworkjavadata/mysql/data:/var/lib/mysql
+      - ./mysql/init/init.sh:/docker-entrypoint-initdb.d/01-init.sh:ro
+      - ./mysql/sql:/opt/sql:ro
+      - ../res/sql:/opt/res/sql:ro
+    command:
+      - mysqld
+      - --innodb-buffer-pool-size=80M
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+8:00
+      - --lower-case-table-names=1
+      - --explicit_defaults_for_timestamp=true
+      - --max_connections=2000
+    restart: always
+    networks:
+      - frameworkjava_network_prd
+    healthcheck:
+      test: ["CMD-SHELL", "mysql --user=$$MYSQL_APP_USER -h127.0.0.1 --password=$$MYSQL_APP_PASSWORD -e 'SELECT 1;'"]
+      start_period: 30s
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    environment:
+      TZ: Asia/Shanghai
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}
+      MYSQL_APP_USER: ${MYSQL_APP_USER:?MYSQL_APP_USER is required}
+      MYSQL_APP_PASSWORD: ${MYSQL_APP_PASSWORD:?MYSQL_APP_PASSWORD is required}
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 20000
+        hard: 40000
+
+  frameworkjava-nacos:
+    image: nacos/nacos-server:v2.2.2
+    environment:
+      MODE: standalone
+      JVM_XMS: 512m
+      JVM_XMX: 512m
+      JVM_XMN: 256m
+      SPRING_DATASOURCE_PLATFORM: mysql
+      MYSQL_SERVICE_HOST: frameworkjava-mysql
+      MYSQL_SERVICE_PORT: 3306
+      MYSQL_SERVICE_DB_NAME: frameworkjava_nacos_prd
+      MYSQL_SERVICE_USER: ${MYSQL_APP_USER:?MYSQL_APP_USER is required}
+      MYSQL_SERVICE_PASSWORD: ${MYSQL_APP_PASSWORD:?MYSQL_APP_PASSWORD is required}
+      NACOS_AUTH_TOKEN: ${NACOS_AUTH_TOKEN:?NACOS_AUTH_TOKEN is required}
+      NACOS_AUTH_IDENTITY_KEY: ${NACOS_AUTH_IDENTITY_KEY:?NACOS_AUTH_IDENTITY_KEY is required}
+      NACOS_AUTH_IDENTITY_VALUE: ${NACOS_AUTH_IDENTITY_VALUE:?NACOS_AUTH_IDENTITY_VALUE is required}
+    ports:
+      - "8866:8848"
+    volumes:
+      - ../data/frameworkjavadata/nacos/logs:/home/nacos/logs
+      - ../data/frameworkjavadata/nacos/tomcatlogs:/home/bit/nacos/tomcat/logs
+      - ./nacos/conf/application.properties:/home/nacos/conf/application.properties:ro
+    restart: always
+    networks:
+      - frameworkjava_network_prd
+    depends_on:
+      frameworkjava-mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8848/nacos"]
+      start_period: 30s
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  frameworkjava-redis:
+    image: redis:7.0.15
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    volumes:
+      - ./redis/conf/redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - ../data/frameworkjavadata/redis/data:/data
+    command:
+      - redis-server
+      - /usr/local/etc/redis/redis.conf
+      - --requirepass
+      - ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    restart: always
+    networks:
+      - frameworkjava_network_prd
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  frameworkjava-rabbitmq:
+    image: rabbitmq:3.12.6-management
+    hostname: frameworkjava-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?RABBITMQ_USER is required}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
+    volumes:
+      - ../data/frameworkjavadata/rabbitmq/log:/var/log/rabbitmq
+      - ../data/frameworkjavadata/rabbitmq/data:/var/lib/rabbitmq
+    restart: always
+    networks:
+      - frameworkjava_network_prd
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  frameworkjava-webprd:
+    image: nginx:1.24.0
+    restart: always
+    networks:
+      - frameworkjava_network_prd
+    ports:
+      - "${WEB_PORT:-8666}:80"
+    volumes:
+      - ./nginx/conf/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/web/dist:/data/frameworkjava/web/dist:ro
+
+networks:
+  frameworkjava_network_prd:
