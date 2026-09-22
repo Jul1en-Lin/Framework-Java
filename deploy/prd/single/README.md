@@ -156,6 +156,7 @@ MySQL 数据目录已有数据时，`docker-entrypoint-initdb.d` 下的初始化
 | 容器内 Nacos | `frameworkjava-nacos:8848`（宿主机 `8866`，旧开发 Nacos 是 `8848`，两者不要混） |
 | Web 端口 | `8666` |
 | 登录用户 | 由 `PRD_SSH_USER` secret 给出（当前生产部署目录与容器都是 root 所有，非 root 用户无 docker 权限） |
+| 发布包中转 | 阿里云 OSS 私有桶（`oss-cn-guangzhou`），凭据只放服务器 `.env` 的 `OSS_*` 四个键 |
 
 脚本的硬性边界（改动发布脚本时不要放宽）：
 
@@ -199,6 +200,29 @@ MySQL 数据目录已有数据时，`docker-entrypoint-initdb.d` 下的初始化
    若以后要把发布权限从 root 降到普通用户：需要同时把服务器上的部署目录（含 `app/service/*`）
    交给该用户、把用户加入 `docker` 组，并注意 `data/` 下 MySQL 数据目录的属主不要改动；
    这是一次需要单独授权的生产变更。
+
+3. **准备阿里云 OSS 中转桶**（只做一次；凭据不进 GitHub，只进服务器 `.env`）：
+
+   - 建一个**国内区域**的私有 Bucket（当前用`oss-cn-guangzhou`，与服务器同地域最近）
+   - 加一条生命周期规则：前缀 `github-release/`，文件过期 7 天后删除（自动清理历史发布包）
+   - 建一个 RAM 用户（只开编程访问），权限策略限定到该桶的该前缀：
+
+     ```json
+     {
+       "Version": "1",
+       "Statement": [{
+         "Effect": "Allow",
+         "Action": ["oss:PutObject", "oss:GetObject", "oss:InitiateMultipartUpload",
+                    "oss:UploadPart", "oss:CompleteMultipartUpload",
+                    "oss:AbortMultipartUpload", "oss:ListParts"],
+         "Resource": ["acs:oss:*:*:<bucket>/github-release/*"]
+       }]
+     }
+     ```
+
+   - 把 4 个键追加到服务器 `.env`（只追加、不覆盖，权限收紧为 600）：
+     `OSS_BUCKET`、`OSS_ENDPOINT`、`OSS_ACCESS_KEY_ID`、`OSS_ACCESS_KEY_SECRET`。
+     该用户没有删除权限；泄漏的影响面仅限这个前缀的读写。
 
 3. **准备完整可信的 known_hosts**：用可信渠道核对主机密钥指纹后再入库，不要在部署时 `ssh-keyscan`
    并直接信任结果（脚本与工作流都不会执行 keyscan）。
@@ -248,7 +272,8 @@ MySQL 数据目录已有数据时，`docker-entrypoint-initdb.d` 下的初始化
    → `scripts/verify_service_artifacts.py` 复核结构与凭据占位符 → 打包成 artifact。
 2. `release` job（`production` Environment，先等人工审批）：校验环境配置 → 写入专用密钥与
    known_hosts（`StrictHostKeyChecking=yes`、`-F /dev/null`，不使用 runner 上的任何 SSH 配置）
-   → 确认 SSH 可达 → 只上传发布工具 → 服务器只读预检 → 上传发布包 → 执行发布 → 写入 Job Summary。
+   → 确认 SSH 可达 → 只上传发布工具（几十 KB）→ 服务器只读预检 → 发布包分片并发上传到 OSS
+   → 服务器从 OSS 取回并核对 SHA-256 → 执行发布 → 写入 Job Summary。
 3. **首次真实发布前建议先跑一次 `dry_run=yes`**：只做预检和打印计划，不替换 JAR、不重启容器
    （上传到暂存目录是无害的）。
 
@@ -263,10 +288,11 @@ MySQL 数据目录已有数据时，`docker-entrypoint-initdb.d` 下的初始化
 | `post_release_sample_seconds` | 发布后资源观察窗口秒数，默认 `60`；首次真实发布用 `600`（issue #3） |
 | `confirm` | 必须精确输入 `frameworkjava-prd`，否则在工作流第一步就失败 |
 
-服务器上执行的实际动作（`app_release.sh deploy`）：
+服务器上执行的实际动作（`app_release.sh fetch-package` + `deploy`）：
 
 ```text
-预检 → 校验发布包（结构 + SHA-256）→ 取锁 → 保留发布包到 releases/<id>/
+预检 → 从 OSS 取回分片 → 拼包并核对 SHA-256 → 解包 → 校验发布包（结构 + 凭据占位符）
+→ 取锁 → 保留发布包到 releases/<id>/
 → 备份四个 service/<name>/*.jar 到 staging/<id>/previous/，替换为新制品
 → docker compose -p frameworkjava-prd -f docker-compose-app.yml up -d --build <四个应用服务>
 → docker exec <webprd 容器> nginx -t && nginx -s reload
@@ -349,6 +375,7 @@ Nginx 只在加载配置时解析一次 `upstream lien-gateway` 的地址，两�
 python3 deploy/prd/single/tests/test_release_workflow.py   # 工作流与脚本的安全边界（静态）
 python3 deploy/prd/single/tests/test_app_release.py        # 发布/回滚端到端（docker 用桩替换）
 python3 deploy/prd/single/tests/test_check_service_health.py  # Nacos/实例/Nginx 校验逻辑
+python3 deploy/prd/single/tests/test_oss_presign.py        # OSS 预签名（签名向量对齐官方 oss2 SDK）
 python3 deploy/prd/single/tests/test_deployment_config.py  # 部署配置与忽略规则
 python3 scripts/tests/test_verify_service_artifacts.py     # 制品结构校验
 ```
@@ -357,40 +384,39 @@ python3 scripts/tests/test_verify_service_artifacts.py     # 制品结构校验
 覆盖成功发布、校验和不符、服务目录多份 JAR、锁被占、首次/后续失败、回滚等场景，
 并断言产生过的 docker 调用里绝不出现 `down`/`prune`/中间件 Compose。
 
-### 已知阻塞：发布包不能从 GitHub runner 直传该服务器
+### 发布包传输：经国内 OSS 中转（不能用直传）
 
-2026-09-22 用与工作流相同的路径实测（一次性探针，测完已删除），结论是**当前服务器的国际线路带宽
-极低**，262 MB 的发布包经 SSH 直传不可行：
+这台服务器的国际线路带宽极低，2026-09-22 用与工作流相同的路径实测（一次性探针，测完已删）：
 
 | 链路 | 实测吞吐 |
 |---|---|
-| GitHub runner → 本服务器（单流） | **14 KB/s**（2 MB 用 145 s） |
-| GitHub runner → 本服务器（8 并发聚合） | **69 KB/s**（16 MB 用 234 s） |
-| GitHub runner → 腾讯云公网镜像源 | 8 MB/s |
-| 本服务器 → 国内镜像源 | 25–112 MB/s |
+| GitHub runner → 本服务器（单流 / 8 并发 / 16 并发） | 14 KB/s / 69 KB/s / — |
 | 本服务器 → GitHub | 10–18 KB/s |
+| runner → 阿里云 OSS（单流 / 8 并发 / 16 并发 PUT） | 74 KB/s / 612 KB/s / **1.33 MB/s** |
+| 本服务器 ← 阿里云 OSS（GET） | **13.8 MB/s** |
+| 本服务器 → 阿里云 OSS（PUT） | 0.36 MB/s（这台实例上行约 3 Mbps，所以只能由 runner 上传） |
 
-按单流 14 KB/s 计算，262 MB 需要约 3 小时，远超部署 job 的 30 分钟超时；并发 8 流也只有 69 KB/s。
-`runner → 服务器`、`服务器 → GitHub` 两个方向都慢，而服务器对国内是 25–112 MB/s。
+按单流算，262 MB 直传要约 3 小时（远超 30 分钟超时）；走国内 OSS 则约 3.3 分钟上传 + 20 秒下载。
+因此发布包改为：**runner 分片并发上传到国内 OSS → 服务器从国内地址取回并逐级校验**。
+发布包仍是 runner 上构建、`verify_service_artifacts.py` 校验过的那一份，服务器侧部署、验收、回滚逻辑不变。
 
-同一趟验证还确认了两件好事：工作流的 SSH 可达性检查（step 6）与服务器只读预检（step 11）
-在真实 GitHub runner 上**均已通过**（严格主机校验、专用密钥、Environment secret、预检全部正常）。
+对象布局与流程：
 
-因此「runner 构建 → SSH/SCP 直传 → 服务器发布」这条链路需要改成经过国内中转，可选方案：
+```text
+github-release/<release_id>/package.tar.gz.part-000 ... part-NNN   每个 16 MB
+github-release/<release_id>/package.tar.gz.sha256 由 runner 提供（整体 SHA-256）
+```
 
-- **A. 国内对象存储中转（最能保留现有设计）**：runner 把发布包传到国内对象存储（如腾讯云 COS），
-  服务器再从国内地址下载。发布包仍是 runner 上构建并校验过的那一份，服务器侧脚本、验收、回滚全部不变；
-  代价是需要新建一个桶与一份受限凭据，并且**runner 上传到国内对象存储的速度尚未实测**
-  （探针测的是下载方向，上传可能受同一跨境瓶颈影响，需要先花几分钟验证）。
-- **B. 只传源码包，在服务器上构建**（不需要任何新账号）：源码 `git archive` 只有 1.5 MB / 519 个文件，
-  14 KB/s 下约 2 分钟即可送达；服务器上装 JDK 17 与 Maven（已有 Maven 3.8.7 与 JDK 21，需补 17），
-  并用国内 Maven 镜像拉依赖（实测国内 25 MB/s）。代价：部署的 JAR 是服务器上构建的，
-  与 runner 上验证的制品不是同一份字节；构建期间会占用生产机的 CPU 与内存（issue #3 的容量预算未计入构建）。
-- **C. 在服务器上跑自托管 runner**：不再需要跨境传输。但这是公开仓库，
-  GitHub 明确不建议在公开仓库上使用自托管 runner（任何可被 fork 触发的 workflow 都会变成
-  生产机上的代码执行入口），本项目当前只有手动触发的工作流，风险可控但属于长期隐患。
+1. runner 把发布包切成 16 MB 分片（`split -d -a 3`），算出整体 SHA-256；
+2. runner 把对象键通过 SSH 发给服务器，服务器用 `scripts/oss_presign.py` 生成**预签名 PUT URL**
+   （OSS 凭据只在服务器 `.env`，GitHub 侧零云凭据），URL 在日志里加掩码；
+3. runner 以 16 并发 PUT，每片独立重试，任一片失败即整体失败；上传吞吐与总量打印在日志里；
+4. 服务器 `app_release.sh fetch-package` 用预签名 GET 取回各分片 → 拼成 tar → 核对整体 SHA-256
+   → 解包 → 再跑一遍 `verify_service_artifacts.py`（结构与凭据占位符），全部通过才进入替换 JAR 阶段。
 
-当前工作流仍是按 A 的前提写的（runner 构建 + SSH 传包），在选定方案前不要执行真实发布。
+分片与 tar 在解包成功后即删除；OSS 上的对象由桶的**生命周期规则 7 天后自动过期**，
+发布侧不需要也不具备删除权限。若以后想更快，可以在控制台给桶开「传输加速」并把 `.env` 的
+`OSS_ENDPOINT` 改成 `oss-accelerate.aliyuncs.com`（`oss_presign.py` 已支持）。
 
 ### 尚未完成：首次真实发布（需生产授权）
 
@@ -437,6 +463,14 @@ python3 scripts/tests/test_verify_service_artifacts.py     # 制品结构校验
   解析不到网关重启了 2740 次（`RestartCount=2740`）；原 `reload_nginx` 用 `docker ps` 查找容器
   会找不到而直接跳过。现改为 `docker ps -a` + 等待（默认 120 s）+ 必要时单独 `docker start`
   该容器，再 `nginx -t` / `nginx -s reload`，并有对应用例覆盖。
+- 2026-09-22 打通 OSS 中转并在服务器实测（roundtrip 64 MB）：
+  PUT 返回 200（361 KB/s，受本机 3 Mbps 上行限制）、GET 返回 200（13.8 MB/s）、两侧 SHA-256 一致。
+  服务器 `.env` 追加了 4 个 `OSS_*` 键（只追加、备份为 `.env.bak-oss-20260923`），
+  并把 `.env` 与备份的权限从 644 收紧为 600（原先全局可读）。
+  桶为国内私有桶，生命周期规则 7 天过期；RAM 用户权限限定在该桶 `github-release/*` 前缀，
+  没有删除权限。OSS 凭据只在服务器，GitHub 侧没有任何云凭据。
+- runner → OSS 实测（临时探针，已从 main 删除）：单流 74 KB/s、8 并发 612 KB/s、16 并发 1.33 MB/s，
+  所以工作流用 16 MB 分片 + 16 并发，262 MB 约 3.3 分钟；服务器取回约 20 秒。
 
 #### Issue #5 执行记录
 

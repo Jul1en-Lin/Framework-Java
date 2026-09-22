@@ -4,6 +4,8 @@
 #   * 只支持 workflow_dispatch 手动触发，没有 push/tag 自动上线；
 #   * 发布凭据与发布保护放在 production Environment 里，不在仓库级明文保存；
 #   * 构建与部署分离：runner 上构建 + 校验，发布包经 artifact 传给部署 job；
+#     发布包出境走国内 OSS 中转（runner→本服务器直传实测只有 14 KB/s，262MB 传不完），
+#     服务器再从国内 OSS 取回并校验 SHA-256；
 #   * SSH 使用专用密钥 + 完整 known_hosts 严格校验；不复制个人私钥，
 #     也不在部署时 ssh-keyscan（不信任临时扫描结果）；
 #   * 中间件、数据库卷、Nginx 容器都不重建；应用改动只发生在服务器上的
@@ -263,18 +265,12 @@ jobs:
         with:
           name: prd-release-package
 
-      - name: 准备上传内容（发布包 + 发布工具）
-        env:
-          ACTION: ${{ inputs.action }}
+      - name: 准备上传内容（发布工具）
         run: |
           set -euo pipefail
           mkdir -p upload/prd-scripts upload/verify
           cp deploy/prd/single/scripts/* upload/prd-scripts/
           cp scripts/verify_service_artifacts.py upload/verify/
-          if [[ "$ACTION" == "deploy" ]]; then
-            mkdir -p upload/package
-            tar -xzf prd-release-package.tar.gz -C upload/package
-          fi
 
       - name: 计算本次服务器暂存目录
         env:
@@ -302,12 +298,70 @@ jobs:
           ssh $SSH_BASE_OPTS "$PRD_USER@$PRD_HOST" \
             "bash '$STAGING/prd-scripts/app_release.sh' preflight --deploy-root '$PRD_DEPLOY_ROOT'"
 
-      - name: 上传发布包
+      - name: 分片并上传发布包到 OSS（国内中转）
         if: ${{ inputs.action == 'deploy' }}
         run: |
           set -euo pipefail
-          tar -czf - -C upload/package . \
-            | ssh $SSH_BASE_OPTS "$PRD_USER@$PRD_HOST" "set -euo pipefail; mkdir -p '$STAGING/package'; tar -xzf - -C '$STAGING/package'"
+          work=/tmp/oss-upload
+          rm -rf "$work"; mkdir -p "$work"
+          cp prd-release-package.tar.gz "$work/package.tar.gz"
+          package_sha256="$(sha256sum "$work/package.tar.gz" | awk '{print $1}')"
+          ( cd "$work" && split -b 16M -d -a 3 package.tar.gz part- )
+          ( cd "$work" && ls part-* | sort ) > "$work/chunks.txt"
+          parts="$(wc -l < "$work/chunks.txt")"
+          echo "共 $parts 个分片（每片 16MB），发布包 sha256=${package_sha256:0:12}…"
+
+          # 对象键由 runner 决定，预签名 URL 由服务器生成（OSS 凭据不出服务器）
+          sed "s|^|github-release/$RELEASE_ID/package.tar.gz.|" "$work/chunks.txt" \
+            | ssh $SSH_BASE_OPTS "$PRD_USER@$PRD_HOST" \
+              "while read -r key; do python3 '$STAGING/prd-scripts/oss_presign.py' --env-file '$PRD_DEPLOY_ROOT/.env' --method PUT --key \"\$key\" --expires 3600; done" \
+            > "$work/urls.txt"
+
+          mapfile -t URLS < "$work/urls.txt"
+          if [ "${#URLS[@]}" -ne "$parts" ]; then
+            echo "::error::预签名 URL 数量（${#URLS[@]}）与分片数（$parts）不一致"
+            exit 1
+          fi
+          for url in "${URLS[@]}"; do echo "::add-mask::$url"; done
+          paste "$work/chunks.txt" <(printf '%s\n' "${URLS[@]}") > "$work/pairs.txt"
+
+          # 跨境单流只有约 74 KB/s，16 并发约 1.3 MB/s（实测）；每片独立重试
+          : > "$work/upload.log"
+          : > "$work/upload.err"
+          parallel=16
+          while read -r chunk url; do
+            ( curl -sS --fail --retry 3 --retry-delay 2 --retry-all-errors \
+                --connect-timeout 15 --max-time 900 \
+                -X PUT -T "$work/$chunk" -H 'Content-Type:' -o /dev/null \
+                -w "%{size_upload} %{speed_upload} $chunk\n" "$url" \
+                >> "$work/upload.log" 2>> "$work/upload.err" ) &
+            while [ "$(jobs -rp | wc -l)" -ge "$parallel" ]; do sleep 0.2; done
+          done < "$work/pairs.txt"
+          wait || true
+
+          uploaded="$(wc -l < "$work/upload.log")"
+          if [ "$uploaded" -ne "$parts" ]; then
+            echo "::error::有分片上传失败（成功 $uploaded/$parts）："
+            cat "$work/upload.err"
+            exit 1
+          fi
+          awk '{bytes += $1} END {printf "已上传 %d 个分片，共 %.1f MB\n", NR, bytes/1048576}' "$work/upload.log"
+          {
+            echo "PACKAGE_PARTS=$parts"
+            echo "PACKAGE_SHA256=$package_sha256"
+          } >> "$GITHUB_ENV"
+
+      - name: 服务器从 OSS 取回发布包
+        if: ${{ inputs.action == 'deploy' }}
+        run: |
+          set -euo pipefail
+          ssh $SSH_BASE_OPTS "$PRD_USER@$PRD_HOST" \
+            "bash '$STAGING/prd-scripts/app_release.sh' fetch-package \
+               --deploy-root '$PRD_DEPLOY_ROOT' \
+               --release-id '$RELEASE_ID' \
+               --parts '$PACKAGE_PARTS' \
+               --sha256 '$PACKAGE_SHA256' \
+               --verifier '$STAGING/verify/verify_service_artifacts.py'"
 
       - name: 发布四个应用服务
         if: ${{ inputs.action == 'deploy' }}

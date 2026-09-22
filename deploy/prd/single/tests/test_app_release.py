@@ -142,6 +142,36 @@ with open(os.environ["VERIFIER_LOG"], "a") as handle:
 sys.exit(int(os.environ.get("VERIFIER_EXIT", "0")))
 """
 
+# 假 curl：把预签名 URL 里的对象键映射到 FAKE_OSS_DIR 下的本地文件（模拟 OSS GET）。
+CURL_STUB = '''#!/usr/bin/env python3
+import os, shutil, sys
+from urllib.parse import urlparse
+
+args = sys.argv[1:]
+with open(os.environ["CURL_LOG"], "a") as handle:
+    handle.write(" ".join(args) + "\\n")
+
+out = url = None
+index = 0
+while index < len(args):
+    if args[index] == "-o":
+        out = args[index + 1]
+        index += 2
+        continue
+    if args[index].startswith("http"):
+        url = args[index]
+    index += 1
+if url is None or out is None:
+    sys.stderr.write("stub curl: unexpected args: {}\\n".format(args))
+    sys.exit(2)
+key = urlparse(url).path.lstrip("/")
+source = os.path.join(os.environ["FAKE_OSS_DIR"], key)
+if not os.path.isfile(source):
+    sys.stderr.write("stub curl: 404 {}\\n".format(key))
+    sys.exit(22)
+shutil.copyfile(source, out)
+'''
+
 
 def sha256_of(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
@@ -162,10 +192,14 @@ class AppReleaseTest(unittest.TestCase):
         self.bin_dir.mkdir()
         self.write_stub("docker", DOCKER_STUB)
         self.write_stub("free", FREE_STUB)
+        self.write_stub("curl", CURL_STUB)
         self.verifier = Path(self._tmp) / "verifier.py"
         self.verifier.write_text(VERIFIER_STUB, encoding="utf-8")
         self.docker_log = Path(self._tmp) / "docker.log"
         self.verifier_log = Path(self._tmp) / "verifier.log"
+        self.curl_log = Path(self._tmp) / "curl.log"
+        self.fake_oss = Path(self._tmp) / "oss"
+        self.fake_oss.mkdir()
 
         # 假服务端口与假 Nginx
         service_server, self.service_port = start_server(make_status_handler(404))
@@ -209,7 +243,11 @@ class AppReleaseTest(unittest.TestCase):
             "WEB_PORT=8666\n"
             "NACOS_USERNAME={}\n"
             "NACOS_PASSWORD={}\n"
-            "MYSQL_ROOT_PASSWORD=dummy\n".format(USERNAME, PASSWORD),
+            "MYSQL_ROOT_PASSWORD=dummy\n"
+            "OSS_BUCKET=frameworkjava-release\n"
+            "OSS_ENDPOINT=oss-cn-guangzhou.aliyuncs.com\n"
+            "OSS_ACCESS_KEY_ID=AKIDEXAMPLE1234567890\n"
+            "OSS_ACCESS_KEY_SECRET=SECRETEXAMPLE1234567890abcdefghij\n".format(USERNAME, PASSWORD),
             encoding="utf-8",
         )
         for name in ("docker-compose-app.yml", "docker-compose-mid.yml"):
@@ -271,6 +309,8 @@ class AppReleaseTest(unittest.TestCase):
                 "PATH": "{}:{}".format(self.bin_dir, environment["PATH"]),
                 "DOCKER_LOG": str(self.docker_log),
                 "VERIFIER_LOG": str(self.verifier_log),
+                "CURL_LOG": str(self.curl_log),
+                "FAKE_OSS_DIR": str(self.fake_oss),
                 "NACOS_HOST_PORT": str(self.nacos_port),
                 "WEB_PORT": str(self.web_port),
                 "SAMPLE_SECONDS": "0",
@@ -788,6 +828,113 @@ class AppReleaseTest(unittest.TestCase):
         calls = "\n".join(self.docker_calls())
         self.assertNotIn("nginx", calls)
         self.assertNotIn("docker start", calls)
+
+    def stage_oss_package(self, release_id, package, parts=3):
+        """把发布包打成 tar.gz 后分片，写到假 OSS 目录，返回 (tar 路径, 总 sha256, 分片数)。"""
+        tar_path = Path(self._tmp) / "{}.tar.gz".format(release_id)
+        subprocess.run(
+            ["tar", "-czf", str(tar_path), "-C", str(package), "."], check=True
+        )
+        digest = sha256_of(tar_path)
+        data = tar_path.read_bytes()
+        chunk = (len(data) + parts - 1) // parts
+        for index in range(parts):
+            target = (
+                self.fake_oss / "github-release" / release_id
+                / "package.tar.gz.part-{:02d}".format(index)
+            )
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data[index * chunk:(index + 1) * chunk])
+        return tar_path, digest, parts
+
+    def run_fetch(self, release_id, parts, digest, extra=(), env=None):
+        return self.run_release(
+            "fetch-package",
+            "--deploy-root",
+            str(self.root),
+            "--release-id",
+            release_id,
+            "--parts",
+            str(parts),
+            "--sha256",
+            digest,
+            "--verifier",
+            str(self.verifier),
+            *extra,
+            env=env or {},
+        )
+
+    def fetched_package(self, release_id):
+        return self.root / "releases" / "staging" / release_id / "package"
+
+    def test_fetch_package_reassembles_and_verifies(self):
+        package = self.build_package("40-abcdefg", "new")
+        _, digest, parts = self.stage_oss_package("40-abcdefg", package)
+        result = self.run_fetch("40-abcdefg", parts, digest)
+        self.assert_succeeds(result)
+        self.assertIn("已取回并通过 SHA-256 校验", result.stdout)
+
+        fetched = self.fetched_package("40-abcdefg")
+        for service, artifact in ARTIFACTS.items():
+            self.assertEqual(
+                (fetched / service / "{}.jar".format(artifact)).read_bytes(),
+                (package / service / "{}.jar".format(artifact)).read_bytes(),
+            )
+        # 分片与 tar 用完即删
+        staging = self.root / "releases" / "staging" / "40-abcdefg"
+        self.assertEqual(list(staging.glob("part-*")), [])
+        self.assertFalse((staging / "package.tar.gz").exists())
+        # 制品结构校验在服务器上又跑了一遍
+        self.assertIn(str(fetched), self.verifier_log.read_text())
+        # 预签名 URL 带签名参数，且不泄露密钥
+        curl_calls = self.curl_log.read_text()
+        self.assertIn("OSSAccessKeyId=AKIDEXAMPLE1234567890", curl_calls)
+        self.assertIn("Signature=", curl_calls)
+        self.assertNotIn("SECRETEXAMPLE", curl_calls + result.stdout + result.stderr)
+
+    def test_fetch_package_rejects_checksum_mismatch(self):
+        package = self.build_package("41-abcdefg", "new")
+        _, digest, parts = self.stage_oss_package("41-abcdefg", package)
+        result = self.run_fetch("41-abcdefg", parts, "0" * 64)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("校验和不一致", result.stderr)
+        self.assertFalse(self.fetched_package("41-abcdefg").joinpath("gateway").exists())
+        self.assert_no_mutations()
+
+    def test_fetch_package_fails_on_missing_part(self):
+        package = self.build_package("42-abcdefg", "new")
+        _, digest, parts = self.stage_oss_package("42-abcdefg", package)
+        (self.fake_oss / "github-release" / "42-abcdefg" / "package.tar.gz.part-01").unlink()
+        result = self.run_fetch("42-abcdefg", parts, digest)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("下载分片 part-01 失败", result.stderr)
+        self.assert_no_mutations()
+
+    def test_fetch_package_requires_oss_config(self):
+        package = self.build_package("43-abcdefg", "new")
+        _, digest, parts = self.stage_oss_package("43-abcdefg", package)
+        env_file = self.root / ".env"
+        env_file.write_text(
+            "\n".join(
+                line for line in env_file.read_text().splitlines()
+                if not line.startswith("OSS_")
+            ) + "\n",
+            encoding="utf-8",
+        )
+        result = self.run_fetch("43-abcdefg", parts, digest)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("缺少 OSS_BUCKET", result.stderr)
+        self.assert_no_mutations()
+
+    def test_fetch_package_rejects_bad_arguments(self):
+        for args in (["--parts", "0"], ["--parts", "x"], ["--sha256", "zz"]):
+            with self.subTest(args=args):
+                result = self.run_release(
+                    "fetch-package", "--deploy-root", str(self.root),
+                    "--release-id", "44-abcdefg", "--parts", "1", "--sha256", "0" * 64,
+                    *args,
+                )
+                self.assertNotEqual(result.returncode, 0)
 
     def test_deploy_requires_release_id_and_package(self):
         result = self.run_release("deploy", "--deploy-root", str(self.root))

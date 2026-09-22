@@ -15,10 +15,11 @@
 #   * 用 releases/lock 互斥，防止并发发布互相覆盖状态。
 #
 # 用法:
-#   app_release.sh preflight  --deploy-root DIR
-#   app_release.sh deploy     --deploy-root DIR --package DIR --release-id ID [--dry-run]
-#   app_release.sh rollback   --deploy-root DIR --to RELEASE_ID
-#   app_release.sh status     --deploy-root DIR
+#   app_release.sh preflight      --deploy-root DIR
+#   app_release.sh fetch-package  --deploy-root DIR --release-id ID --parts N --sha256 HASH
+#   app_release.sh deploy         --deploy-root DIR --package DIR --release-id ID [--dry-run]
+#   app_release.sh rollback       --deploy-root DIR --to RELEASE_ID
+#   app_release.sh status         --deploy-root DIR
 #
 # 退出码：0 成功；1 发布/校验失败；2 用法或环境错误。
 #
@@ -51,6 +52,8 @@ PACKAGE=""
 RELEASE_ID=""
 ROLLBACK_TO=""
 STAGING_OPT=""
+PART_COUNT=""
+PACKAGE_SHA256=""
 VERIFIER=""
 OPERATOR="${USER:-unknown}"
 DRY_RUN=0
@@ -68,10 +71,11 @@ usage() {
 用法: app_release.sh <命令> --deploy-root DIR [选项]
 
 命令:
-  preflight   只读预检：目录、.env、Compose、服务目录、资源余量、并发锁
-  deploy      发布：校验发布包 → 备份当前 JAR → 替换 → 重建四服务 → reload Nginx → 验收
-  rollback    回滚到 releases/ 中已保留的 release_id（同一套校验与验收）
-  status      查看当前生效版本、已保留版本与最近操作记录（只读）
+  preflight      只读预检：目录、.env、Compose、服务目录、资源余量、并发锁
+  fetch-package  从国内 OSS 取回分片发布包，核对 SHA-256 后解包并校验（国际直传不可用）
+  deploy         发布：校验发布包 → 备份当前 JAR → 替换 → 重建四服务 → reload Nginx → 验收
+  rollback       回滚到 releases/ 中已保留的 release_id（同一套校验与验收）
+  status         查看当前生效版本、已保留版本与最近操作记录（只读）
 
 选项:
   --deploy-root DIR   服务器 single 部署根目录（必填，内含 .env 与 app/）
@@ -80,6 +84,8 @@ usage() {
   --staging DIR       可选：本次发布的暂存目录（默认取发布包所在目录）
   --verifier PATH     可选：scripts/verify_service_artifacts.py，对发布包再做结构校验
   --to RELEASE_ID     rollback 的目标版本
+  --parts N           fetch-package：OSS 上的分片数量
+  --sha256 HASH       fetch-package：发布包 tar 的 SHA-256
   --operator NAME     记录在历史与 manifest 里的操作人
   --dry-run           只预检并打印将执行的动作，不做任何变更
   -h, --help          显示帮助
@@ -570,6 +576,77 @@ cmd_preflight() {
   info "预检完成，未做任何改动"
 }
 
+# ---- OSS 取回：这台服务器的国际线路只有十几 KB/s，发布包改走国内 OSS 中转 ----
+oss_presign_url() {
+  local method="$1" key="$2" expires="${3:-3600}"
+  python3 "$SCRIPT_DIR/oss_presign.py" --env-file "$ENV_FILE" \
+    --method "$method" --key "$key" --expires "$expires"
+}
+
+# 下载一个对象到文件（对象不存在或校验失败时非零退出）。
+oss_get() {
+  local key="$1" out="$2" url
+  url="$(oss_presign_url GET "$key")" || return 1
+  curl -sS --fail --retry 3 --retry-delay 2 --max-time 300 -o "$out" "$url"
+}
+
+check_oss_config() {
+  command -v curl >/dev/null 2>&1 || die "服务器上没有 curl，无法从 OSS 取回发布包"
+  [[ -f "$SCRIPT_DIR/oss_presign.py" ]] || die "缺少 $SCRIPT_DIR/oss_presign.py"
+  local key
+  for key in OSS_BUCKET OSS_ENDPOINT OSS_ACCESS_KEY_ID OSS_ACCESS_KEY_SECRET; do
+    [[ -n "$(env_get "$key")" ]] || die ".env 缺少 ${key}，无法从 OSS 取回发布包（值不打印）"
+  done
+}
+
+cmd_fetch_package() {
+  [[ -n "$RELEASE_ID" ]] || die "fetch-package 需要 --release-id"
+  [[ -n "$PART_COUNT" ]] || die "fetch-package 需要 --parts"
+  [[ -n "$PACKAGE_SHA256" ]] || die "fetch-package 需要 --sha256"
+  [[ "$RELEASE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] || die "release-id 非法：${RELEASE_ID}"
+  [[ "$PART_COUNT" =~ ^[0-9]{1,3}$ ]] || die "--parts 必须是数字（实际：${PART_COUNT}）"
+  [[ "$PART_COUNT" -ge 1 ]] || die "--parts 至少为 1"
+  [[ "$PACKAGE_SHA256" =~ ^[0-9a-f]{64}$ ]] || die "--sha256 必须是 64 位十六进制"
+
+  preflight_environment
+  check_oss_config
+  PHASE="staging"
+
+  STAGING="$RELEASES_DIR/staging/$RELEASE_ID"
+  set_staging "$STAGING"
+  mkdir -p "$STAGING"
+  local prefix="github-release/$RELEASE_ID"
+  local tar="$STAGING/package.tar.gz" dir="$STAGING/package" i part actual
+  safe_rm_rf "$dir"
+  rm -f "$tar"
+  mkdir -p "$dir"
+
+  info "从 OSS 取回发布包（$PART_COUNT 个分片）…"
+  for i in $(seq 0 $((PART_COUNT - 1))); do
+    part="$(printf 'part-%02d' "$i")"
+    oss_get "$prefix/package.tar.gz.$part" "$STAGING/$part" \
+      || die "从 OSS 下载分片 $part 失败"
+  done
+
+  : > "$tar"
+  for i in $(seq 0 $((PART_COUNT - 1))); do
+    part="$(printf 'part-%02d' "$i")"
+    cat "$STAGING/$part" >> "$tar"
+    rm -f "$STAGING/$part"
+  done
+  actual="$(sha256_of "$tar")"
+  if [[ "$actual" != "$PACKAGE_SHA256" ]]; then
+    fail "发布包校验和不一致：期望 ${PACKAGE_SHA256}，实际 ${actual}"
+    die "发布包在传输中损坏或上传不完整，未做任何改动"
+  fi
+  ok "发布包已取回并通过 SHA-256 校验（${PACKAGE_SHA256:0:12}…）"
+
+  tar -xzf "$tar" -C "$dir" || die "解压发布包失败"
+  rm -f "$tar"
+  preflight_package "$dir"
+  info "发布包就绪：${dir}（deploy 时用 --package '$dir'）"
+}
+
 cmd_deploy() {
   [[ -n "$PACKAGE" ]] || die "deploy 需要 --package"
   [[ -n "$RELEASE_ID" ]] || die "deploy 需要 --release-id"
@@ -707,7 +784,7 @@ cmd_status() {
 COMMAND="$1"
 shift
 case "$COMMAND" in
-  preflight|deploy|rollback|status) ;;
+  preflight|fetch-package|deploy|rollback|status) ;;
   -h|--help) usage; exit 0 ;;
   *) usage >&2; die "未知命令: $COMMAND" ;;
 esac
@@ -718,6 +795,8 @@ while [[ $# -gt 0 ]]; do
     --package) PACKAGE="${2:-}"; shift 2 ;;
     --release-id) RELEASE_ID="${2:-}"; shift 2 ;;
     --to) ROLLBACK_TO="${2:-}"; shift 2 ;;
+    --parts) PART_COUNT="${2:-}"; shift 2 ;;
+    --sha256) PACKAGE_SHA256="${2:-}"; shift 2 ;;
     --staging) STAGING_OPT="${2:-}"; shift 2 ;;
     --verifier) VERIFIER="${2:-}"; shift 2 ;;
     --operator) OPERATOR="${2:-}"; shift 2 ;;
@@ -738,6 +817,7 @@ trap on_exit EXIT
 
 case "$COMMAND" in
   preflight) cmd_preflight ;;
+  fetch-package) cmd_fetch_package ;;
   deploy) cmd_deploy ;;
   rollback) cmd_rollback ;;
   status) cmd_status ;;
