@@ -326,6 +326,7 @@ jobs:
           paste "$work/chunks.txt" <(printf '%s\n' "${URLS[@]}") > "$work/pairs.txt"
 
           # 跨境单流只有约 74 KB/s，16 并发约 1.3 MB/s（实测）；每片独立重试
+          # 注意：curl --fail 在 HTTP 失败时仍会输出 -w 内容，所以必须把 http_code 写进日志逐个核对
           : > "$work/upload.log"
           : > "$work/upload.err"
           parallel=16
@@ -333,19 +334,22 @@ jobs:
             ( curl -sS --fail --retry 3 --retry-delay 2 --retry-all-errors \
                 --connect-timeout 15 --max-time 900 \
                 -X PUT -T "$work/$chunk" -H 'Content-Type:' -o /dev/null \
-                -w "%{size_upload} %{speed_upload} $chunk\n" "$url" \
+                -w "%{http_code} %{size_upload} %{speed_upload} $chunk\n" "$url" \
                 >> "$work/upload.log" 2>> "$work/upload.err" ) &
             while [ "$(jobs -rp | wc -l)" -ge "$parallel" ]; do sleep 0.2; done
           done < "$work/pairs.txt"
           wait || true
 
           uploaded="$(wc -l < "$work/upload.log")"
-          if [ "$uploaded" -ne "$parts" ]; then
-            echo "::error::有分片上传失败（成功 $uploaded/$parts）："
+          bad="$(awk '$1 != 200' "$work/upload.log")"
+          if [ "$uploaded" -ne "$parts" ] || [ -n "$bad" ]; then
+            echo "::error::分片上传失败（成功 $uploaded/$parts）："
+            [ -n "$bad" ] && echo "$bad"
             cat "$work/upload.err"
             exit 1
           fi
-          awk '{bytes += $1} END {printf "已上传 %d 个分片，共 %.1f MB\n", NR, bytes/1048576}' "$work/upload.log"
+          cat "$work/upload.log"
+          awk '{bytes += $2} END {printf "已上传 %d 个分片，共 %.1f MB\n", NR, bytes/1048576}' "$work/upload.log"
           {
             echo "PACKAGE_PARTS=$parts"
             echo "PACKAGE_SHA256=$package_sha256"

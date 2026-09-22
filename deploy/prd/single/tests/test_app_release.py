@@ -841,7 +841,7 @@ class AppReleaseTest(unittest.TestCase):
         for index in range(parts):
             target = (
                 self.fake_oss / "github-release" / release_id
-                / "package.tar.gz.part-{:02d}".format(index)
+                / "package.tar.gz.part-{:03d}".format(index)
             )
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(data[index * chunk:(index + 1) * chunk])
@@ -904,10 +904,10 @@ class AppReleaseTest(unittest.TestCase):
     def test_fetch_package_fails_on_missing_part(self):
         package = self.build_package("42-abcdefg", "new")
         _, digest, parts = self.stage_oss_package("42-abcdefg", package)
-        (self.fake_oss / "github-release" / "42-abcdefg" / "package.tar.gz.part-01").unlink()
+        (self.fake_oss / "github-release" / "42-abcdefg" / "package.tar.gz.part-001").unlink()
         result = self.run_fetch("42-abcdefg", parts, digest)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("下载分片 part-01 失败", result.stderr)
+        self.assertIn("下载分片 part-001 失败", result.stderr)
         self.assert_no_mutations()
 
     def test_fetch_package_requires_oss_config(self):

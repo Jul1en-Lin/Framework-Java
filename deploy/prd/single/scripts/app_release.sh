@@ -623,14 +623,14 @@ cmd_fetch_package() {
 
   info "从 OSS 取回发布包（$PART_COUNT 个分片）…"
   for i in $(seq 0 $((PART_COUNT - 1))); do
-    part="$(printf 'part-%02d' "$i")"
+    part="$(printf 'part-%03d' "$i")"
     oss_get "$prefix/package.tar.gz.$part" "$STAGING/$part" \
       || die "从 OSS 下载分片 $part 失败"
   done
 
   : > "$tar"
   for i in $(seq 0 $((PART_COUNT - 1))); do
-    part="$(printf 'part-%02d' "$i")"
+    part="$(printf 'part-%03d' "$i")"
     cat "$STAGING/$part" >> "$tar"
     rm -f "$STAGING/$part"
   done

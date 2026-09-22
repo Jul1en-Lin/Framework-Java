@@ -65,6 +65,27 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn('extra="--dry-run"', self.workflow)
         self.assertIn("dry_run 只适用于 deploy", self.workflow)
 
+    def test_chunk_naming_matches_between_runner_and_server(self):
+        # runner 用 split -a 3 生成 part-NNN，服务器必须按同样位数拼包。
+        # （第一版服务器写成 part-%02d，真实 dry-run 里上传成功但服务器取回 404。）
+        self.assertIn("split -b 16M -d -a 3 package.tar.gz part-", self.workflow)
+        self.assertIn("part-%03d", self.app_release)
+        self.assertNotIn("part-%02d", self.app_release)
+        # curl --fail 在 HTTP 失败时也会输出 -w，所以必须把 http_code 写进日志逐个核对
+        self.assertIn('-w "%{http_code} %{size_upload}', self.workflow)
+        self.assertIn("awk '$1 != 200'", self.workflow)
+
+    def test_oss_transfer_is_deploy_only_and_verified_on_server(self):
+        for name in ("分片并上传发布包到 OSS（国内中转）", "服务器从 OSS 取回发布包"):
+            section = self.workflow.split(name, 1)[1]
+            self.assertIn("if: ${{ inputs.action == 'deploy' }}", section[:300])
+        fetch_step = self.workflow.split("服务器从 OSS 取回发布包", 1)[1]
+        self.assertIn("fetch-package", fetch_step)
+        self.assertIn("--sha256 '$PACKAGE_SHA256'", fetch_step)
+        self.assertIn("--verifier", fetch_step)
+        # 预签名 URL 在日志里要加掩码
+        self.assertIn("::add-mask::", self.workflow)
+
     # ---- 凭据与主机校验 ----
 
     def test_uses_production_environment_for_credentials(self):
