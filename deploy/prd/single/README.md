@@ -327,11 +327,20 @@ MySQL 数据目录已有数据时，`docker-entrypoint-initdb.d` 下的初始化
 被中断的发布：`releases/lock/owner` 里记录了 host/pid/release/时间。确认没有发布进程后，
 手工 `rm -rf <部署根目录>/releases/lock` 再重试；脚本不会自动清除他人的锁。
 
-### 网关重建与 Nginx DNS
+### 网关首次上线与 Nginx
 
-网关容器重建后 IP 变化，而 Nginx 只在加载配置时解析一次 `upstream lien-gateway` 的地址。
-因此每次发布在 `compose up -d --build` 之后单独执行 `nginx -t` + `nginx -s reload`
-（只 reload，不重启中间件）。如果验收里 `/admin/` 等返回 502/503/504，先确认 Nginx 是否 reload 成功，
+Nginx 只在加载配置时解析一次 `upstream lien-gateway` 的地址，两种情况都必须单独处理：
+
+1. **网关首次上线前**：`frameworkjava-webprd` 会一直重启失败
+   （`[emerg] host not found in upstream "frameworkjava-gateway:18080"`）。实测该容器自创建后
+   已按 `restart: always` 重启了 2700 多次。发布脚本因此用 `docker ps -a` 而不是 `docker ps`
+   查找它：先等它自动恢复（默认最多 120 秒，`NGINX_WAIT_SECONDS` 可调），仍未运行就单独
+   `docker start` 这一个容器，然后 `nginx -t` + `nginx -s reload`；整个过程不触碰中间件、
+   不重建其它容器。
+2. **网关重建后 IP 变化**：`compose up -d --build` 之后执行 `nginx -t` + `nginx -s reload`
+   让新 IP 生效（只 reload，不重启中间件）。
+
+如果验收里 `/admin/` 等返回 502/503/504，先确认 Nginx 是否真的在运行并 reload 成功，
 再查网关容器与 Nacos 注册，不要用「重启整套中间件」来解决。
 
 ### 本地可重复验证
@@ -347,6 +356,41 @@ python3 scripts/tests/test_verify_service_artifacts.py     # 制品结构校验
 `test_app_release.py` 用假 Nacos + 假服务端口 + 假 Nginx + PATH 上的 `docker` 桩驱动真实脚本，
 覆盖成功发布、校验和不符、服务目录多份 JAR、锁被占、首次/后续失败、回滚等场景，
 并断言产生过的 docker 调用里绝不出现 `down`/`prune`/中间件 Compose。
+
+### 已知阻塞：发布包不能从 GitHub runner 直传该服务器
+
+2026-09-22 用与工作流相同的路径实测（一次性探针，测完已删除），结论是**当前服务器的国际线路带宽
+极低**，262 MB 的发布包经 SSH 直传不可行：
+
+| 链路 | 实测吞吐 |
+|---|---|
+| GitHub runner → 本服务器（单流） | **14 KB/s**（2 MB 用 145 s） |
+| GitHub runner → 本服务器（8 并发聚合） | **69 KB/s**（16 MB 用 234 s） |
+| GitHub runner → 腾讯云公网镜像源 | 8 MB/s |
+| 本服务器 → 国内镜像源 | 25–112 MB/s |
+| 本服务器 → GitHub | 10–18 KB/s |
+
+按单流 14 KB/s 计算，262 MB 需要约 3 小时，远超部署 job 的 30 分钟超时；并发 8 流也只有 69 KB/s。
+`runner → 服务器`、`服务器 → GitHub` 两个方向都慢，而服务器对国内是 25–112 MB/s。
+
+同一趟验证还确认了两件好事：工作流的 SSH 可达性检查（step 6）与服务器只读预检（step 11）
+在真实 GitHub runner 上**均已通过**（严格主机校验、专用密钥、Environment secret、预检全部正常）。
+
+因此「runner 构建 → SSH/SCP 直传 → 服务器发布」这条链路需要改成经过国内中转，可选方案：
+
+- **A. 国内对象存储中转（最能保留现有设计）**：runner 把发布包传到国内对象存储（如腾讯云 COS），
+  服务器再从国内地址下载。发布包仍是 runner 上构建并校验过的那一份，服务器侧脚本、验收、回滚全部不变；
+  代价是需要新建一个桶与一份受限凭据，并且**runner 上传到国内对象存储的速度尚未实测**
+  （探针测的是下载方向，上传可能受同一跨境瓶颈影响，需要先花几分钟验证）。
+- **B. 只传源码包，在服务器上构建**（不需要任何新账号）：源码 `git archive` 只有 1.5 MB / 519 个文件，
+  14 KB/s 下约 2 分钟即可送达；服务器上装 JDK 17 与 Maven（已有 Maven 3.8.7 与 JDK 21，需补 17），
+  并用国内 Maven 镜像拉依赖（实测国内 25 MB/s）。代价：部署的 JAR 是服务器上构建的，
+  与 runner 上验证的制品不是同一份字节；构建期间会占用生产机的 CPU 与内存（issue #3 的容量预算未计入构建）。
+- **C. 在服务器上跑自托管 runner**：不再需要跨境传输。但这是公开仓库，
+  GitHub 明确不建议在公开仓库上使用自托管 runner（任何可被 fork 触发的 workflow 都会变成
+  生产机上的代码执行入口），本项目当前只有手动触发的工作流，风险可控但属于长期隐患。
+
+当前工作流仍是按 A 的前提写的（runner 构建 + SSH 传包），在选定方案前不要执行真实发布。
 
 ### 尚未完成：首次真实发布（需生产授权）
 
@@ -384,8 +428,15 @@ python3 scripts/tests/test_verify_service_artifacts.py     # 制品结构校验
 - 预检时确认四个 `app/service/<name>/` 目录**只有 Dockerfile、没有任何 JAR**，即首次发布前
   四服务从未在生产启动过。基础镜像 `eclipse-temurin:17-jdk` 本地不存在，首次 `--build`
   会从已配置的 registry mirror 拉取（会占用额外磁盘与时间）。
-- **尚未执行任何真实发布**：首次发布仍需单独的生产操作授权，授权后按上面的清单先跑
-  `dry_run=yes`，再执行真实发布并回填「Issue #5 执行记录」。
+- **尚未执行任何真实发布**：首次发布仍需单独的生产操作授权。
+- 2026-09-22 在真实 GitHub runner 上跑过一次 `dry_run=yes`：SSH 可达性检查与服务器只读预检
+  **均通过**（环境 secret、严格主机校验、专用密钥、生产标识、Compose 校验都正常），
+  但发布包经 SSH 上传只有 14 KB/s，262 MB 传不完（该 run 已取消，暂存目录与 `releases/`
+  已在服务器上清理，未改动任何容器）。传输限制与可选方案见上一节「已知阻塞」。
+- 同一趟验证发现问题并已修复：`frameworkjava-webprd` 自 2026-09-20 创建起因 upstream
+  解析不到网关重启了 2740 次（`RestartCount=2740`）；原 `reload_nginx` 用 `docker ps` 查找容器
+  会找不到而直接跳过。现改为 `docker ps -a` + 等待（默认 120 s）+ 必要时单独 `docker start`
+  该容器，再 `nginx -t` / `nginx -s reload`，并有对应用例覆盖。
 
 #### Issue #5 执行记录
 

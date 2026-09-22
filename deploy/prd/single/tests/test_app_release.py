@@ -59,21 +59,36 @@ KNOWN_SERVICES = {
     "frameworkjava-file",
     "frameworkjava-portal",
 }
+STARTED_MARKER = os.environ["DOCKER_LOG"] + ".webprd-started"
 
 service = ""
 for arg in args:
-    if arg.startswith("com.docker.compose.service="):
-        service = arg.split("=", 1)[1]
+    if "com.docker.compose.service=" in arg:
+        service = arg.split("com.docker.compose.service=", 1)[1]
 
 if args and args[0] == "info":
     sys.exit(0)
 if args[:2] == ["image", "inspect"]:
     sys.exit(0)
 if args and args[0] == "ps":
+    if os.environ.get("DOCKER_NO_WEBPRD") == "1" and service == "frameworkjava-webprd":
+        sys.exit(0)
     print("cid-" + service.replace("frameworkjava-", ""))
     sys.exit(0)
 if args and args[0] == "inspect":
+    target = args[-1]
+    if target == "cid-webprd":
+        # 模拟「网关上线前 nginx 因 upstream 解析不到网关而重启循环」
+        if os.environ.get("DOCKER_WEBPRD_RUNNING") == "0" and not os.path.exists(STARTED_MARKER):
+            print("false")
+            sys.exit(0)
+        print("true")
+        sys.exit(0)
     print("true 0 running")
+    sys.exit(0)
+if args and args[0] == "start":
+    if args[-1] == "cid-webprd":
+        open(STARTED_MARKER, "w").close()
     sys.exit(0)
 if args and args[0] == "exec":
     sys.stderr.write("nginx: configuration file test is successful\\n")
@@ -749,6 +764,30 @@ class AppReleaseTest(unittest.TestCase):
         )
         self.assert_succeeds(result)
         self.assertIn("28-abcdefg", self.verifier_log.read_text())
+
+    def test_nginx_crash_loop_is_waited_for_and_started(self):
+        """网关首次上线前 webprd 因 upstream 解析不到网关而重启循环：必须等它恢复或单独启动它。"""
+        result = self.deploy(
+            "32-abcdefg",
+            "new",
+            env={"DOCKER_WEBPRD_RUNNING": "0", "NGINX_WAIT_SECONDS": "0"},
+        )
+        self.assert_succeeds(result)
+        self.assertIn("等待其自动恢复", result.stdout)
+        calls = "\n".join(self.docker_calls())
+        self.assertIn("docker start cid-webprd", calls)
+        self.assertIn("nginx -s reload", calls)
+        self.assertNotIn("restart", calls)
+        self.assertNotIn("down", calls)
+        self.assert_never_destructive()
+
+    def test_missing_nginx_container_skips_nginx_step(self):
+        result = self.deploy("33-abcdefg", "new", env={"DOCKER_NO_WEBPRD": "1"})
+        self.assert_succeeds(result)
+        self.assertIn("未找到 frameworkjava-webprd 容器", result.stderr)
+        calls = "\n".join(self.docker_calls())
+        self.assertNotIn("nginx", calls)
+        self.assertNotIn("docker start", calls)
 
     def test_deploy_requires_release_id_and_package(self):
         result = self.run_release("deploy", "--deploy-root", str(self.root))

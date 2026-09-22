@@ -42,6 +42,8 @@ MIN_AVAIL_MEM_MB="${MIN_AVAIL_MEM_MB:-1400}"
 MIN_FREE_DISK_MB="${MIN_FREE_DISK_MB:-3072}"
 READY_TIMEOUT="${READY_TIMEOUT:-300}"
 SAMPLE_SECONDS="${SAMPLE_SECONDS:-60}"
+# 网关首次上线前 Nginx 会因为 upstream 解析不到网关而一直重启；等它自己恢复的上限。
+NGINX_WAIT_SECONDS="${NGINX_WAIT_SECONDS:-120}"
 
 COMMAND=""
 DEPLOY_ROOT=""
@@ -430,18 +432,45 @@ stop_services() {
 }
 
 reload_nginx() {
-  local id
-  id="$(docker ps -q \
+  local id waited=0
+  # 包含未运行/重启中的容器：网关首次上线前 webprd 会因为 upstream 解析不到
+  # frameworkjava-gateway 而一直重启（现网实测重启过数千次），这时它还不在 docker ps 里。
+  id="$(docker ps -a -q \
     --filter "label=com.docker.compose.project=$COMPOSE_PROJECT" \
     --filter "label=com.docker.compose.service=frameworkjava-webprd" | head -1)"
   if [[ -z "$id" ]]; then
-    warn "未找到 frameworkjava-webprd 容器；跳过 Nginx reload（请在网关重建后确认上游解析）"
+    warn "未找到 frameworkjava-webprd 容器；跳过 Nginx 处理（若经 Nginx 的验收失败，请人工确认）"
     return 0
   fi
+
+  if ! nginx_container_running "$id"; then
+    info "frameworkjava-webprd 未运行：首次上线前 upstream 解析不到网关会一直重启，属预期；等待其自动恢复…"
+    while ! nginx_container_running "$id"; do
+      if [[ "$waited" -ge "$NGINX_WAIT_SECONDS" ]]; then
+        warn "等待 ${NGINX_WAIT_SECONDS}s 后仍未运行，单独启动该容器（不动中间件、不动其它容器）"
+        docker start "$id" >/dev/null 2>&1 || true
+        sleep 5
+        if ! nginx_container_running "$id"; then
+          fail "frameworkjava-webprd 仍无法启动，最后 20 行日志："
+          docker logs --tail=20 "$id" >&2 2>&1 || true
+          return 1
+        fi
+        break
+      fi
+      sleep 5
+      waited=$((waited + 5))
+    done
+    ok "frameworkjava-webprd 已运行"
+  fi
+
   # 网关容器重建后 IP 会变，而 Nginx 只在加载配置时解析一次 upstream。
   docker exec "$id" nginx -t
   docker exec "$id" nginx -s reload
-  ok "Nginx 配置校验通过并已 reload（只 reload，不重启中间件）"
+  ok "Nginx 配置校验通过并已 reload（只处理该容器，不重启中间件）"
+}
+
+nginx_container_running() {
+  [[ "$(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null || echo false)" == "true" ]]
 }
 
 run_verification() {
