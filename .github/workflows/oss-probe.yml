@@ -1,0 +1,73 @@
+# 一次性探针：测 GitHub runner → 阿里云 OSS 的上传吞吐（发布包要走这条路）。
+# 用完即删，不要长期保留。
+name: OSS 上传测速探针（一次性）
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: 配置 SSH
+        env:
+          PRIVATE_KEY: ${{ secrets.PRD_SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.PRD_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "$RUNNER_TEMP/sshrun"
+          printf '%s\n' "$PRIVATE_KEY" > "$RUNNER_TEMP/sshrun/id_release"
+          printf '%s\n' "$KNOWN_HOSTS" > "$RUNNER_TEMP/sshrun/known_hosts"
+          echo "SSH_BASE_OPTS=-F /dev/null -i $RUNNER_TEMP/sshrun/id_release -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$RUNNER_TEMP/sshrun/known_hosts -o BatchMode=yes -o ConnectTimeout=15 -o Compression=no -p ${{ secrets.PRD_SSH_PORT || 22 }}" >> "$GITHUB_ENV"
+
+      - name: 上传 presign 工具并取预签名 URL
+        env:
+          HOST: ${{ secrets.PRD_SSH_HOST }}
+          USER_NAME: ${{ secrets.PRD_SSH_USER }}
+          DEPLOY_ROOT: ${{ secrets.PRD_DEPLOY_ROOT }}
+        run: |
+          set -euo pipefail
+          export PRD_HOST="$HOST" PRD_USER="$USER_NAME"
+          mkdir -p /tmp/oss
+          cp deploy/prd/single/scripts/oss_presign.py /tmp/oss/
+          ssh $SSH_BASE_OPTS "$PRD_USER@$PRD_HOST" 'mkdir -p /root/oss-check && cat > /root/oss-check/oss_presign.py' < /tmp/oss/oss_presign.py
+          mapfile -t URLS < <(ssh $SSH_BASE_OPTS "$PRD_USER@$PRD_HOST" \
+            "for i in \$(seq 1 16); do python3 /root/oss-check/oss_presign.py --env-file '$DEPLOY_ROOT/.env' --method PUT --key 'github-release/probe/run-${{ github.run_id }}-part-'\$i'.bin' --expires 1800; done")
+          [ "${#URLS[@]}" -eq 16 ] || { echo "::error::预签名 URL 数量不对：${#URLS[@]}"; exit 1; }
+          for u in "${URLS[@]}"; do echo "::add-mask::$u"; done
+          printf '%s\n' "${URLS[@]}" > /tmp/oss/urls.txt
+          echo "已获取 ${#URLS[@]} 个预签名 URL（已加掩码）"
+
+      - name: 测量上传吞吐（单流 vs 8 流）
+        run: |
+          set -uo pipefail
+          mapfile -t URLS < /tmp/oss/urls.txt
+          measure() {
+            local label="$1" maxtime="$2" count="$3" start_index="$4"
+            : > /tmp/oss/measure.txt
+            local t0 t1 i
+            t0=$(date +%s)
+            for i in $(seq 0 $((count - 1))); do
+              ( head -c 33554432 /dev/zero | curl -sS -o /dev/null -X PUT -T - -H 'Content-Type:' \
+                  --max-time "$maxtime" -w '%{size_upload} %{speed_upload}\n' \
+                  "${URLS[$((start_index + i))]}" >> /tmp/oss/measure.txt ) &
+            done
+            wait
+            t1=$(date +%s)
+            awk -v label="$label" -v secs="$((t1 - t0))" \
+              '{bytes += $1} END {printf "%s: %d 流 × 上限 32MB，%d 秒内共上传 %.1f MB → 聚合 %.0f KB/s（%.2f MB/s）\n", label, NR, secs, bytes/1048576, bytes/1024/secs, bytes/1048576/secs}' \
+              /tmp/oss/measure.txt
+          }
+          measure "单流" 45 1 0
+          measure "8 流" 45 8 1
+          measure "16 流" 45 16 0
