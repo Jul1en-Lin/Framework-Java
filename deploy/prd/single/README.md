@@ -455,10 +455,14 @@ github-release/<release_id>/package.tar.gz.sha256 由 runner 提供（整体 SHA
   四服务从未在生产启动过。基础镜像 `eclipse-temurin:17-jdk` 本地不存在，首次 `--build`
   会从已配置的 registry mirror 拉取（会占用额外磁盘与时间）。
 - **尚未执行任何真实发布**：首次发布仍需单独的生产操作授权。
-- 2026-09-22 在真实 GitHub runner 上跑过一次 `dry_run=yes`：SSH 可达性检查与服务器只读预检
-  **均通过**（环境 secret、严格主机校验、专用密钥、生产标识、Compose 校验都正常），
-  但发布包经 SSH 上传只有 14 KB/s，262 MB 传不完（该 run 已取消，暂存目录与 `releases/`
-  已在服务器上清理，未改动任何容器）。传输限制与可选方案见上一节「已知阻塞」。
+- 2026-09-22 在真实 GitHub runner 上完成 `dry_run=yes` 全链路验证（run 35761718303）：
+  构建 + 制品校验 → SSH 可达性 → 上传发布工具 → 服务器预检 → 分片并发上传 OSS
+  → 服务器取回并核对 SHA-256 → 解包后再验制品 → `deploy --dry-run` 打印计划。
+  实测：221.9 MB 分 14 片，上传 143 秒（约 1.55 MB/s，单片最高 3.8 MB/s），
+  服务器取回 + 校验 + 解包 34 秒，全程未改动生产（服务目录仍只有 Dockerfile、
+  中间件容器未动、无 `releases/<id>`、未取锁），dry-run 的暂存目录事后已清理。
+  过程中发现并修掉两个真实缺陷：分片命名位数不一致（服务器找 `part-00`、runner 传 `part-000`）、
+  上传校验只数日志行数（`curl --fail` 失败时仍输出 `-w`）——见 commit 与对应静态用例。
 - 同一趟验证发现问题并已修复：`frameworkjava-webprd` 自 2026-09-20 创建起因 upstream
   解析不到网关重启了 2740 次（`RestartCount=2740`）；原 `reload_nginx` 用 `docker ps` 查找容器
   会找不到而直接跳过。现改为 `docker ps -a` + 等待（默认 120 s）+ 必要时单独 `docker start`

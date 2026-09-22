@@ -357,6 +357,8 @@ jobs:
 
       - name: 服务器从 OSS 取回发布包
         if: ${{ inputs.action == 'deploy' }}
+        env:
+          OPERATOR: ${{ github.actor }}
         run: |
           set -euo pipefail
           ssh $SSH_BASE_OPTS "$PRD_USER@$PRD_HOST" \
@@ -365,7 +367,8 @@ jobs:
                --release-id '$RELEASE_ID' \
                --parts '$PACKAGE_PARTS' \
                --sha256 '$PACKAGE_SHA256' \
-               --verifier '$STAGING/verify/verify_service_artifacts.py'"
+               --verifier '$STAGING/verify/verify_service_artifacts.py' \
+               --operator '$OPERATOR'"
 
       - name: 发布四个应用服务
         if: ${{ inputs.action == 'deploy' }}
