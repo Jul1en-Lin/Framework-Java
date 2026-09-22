@@ -1,0 +1,380 @@
+# 生产发布与回滚（单服务器，frameworkjava-prd）
+#
+# 设计约束（改动此文件时必须保持）：
+#   * 只支持 workflow_dispatch 手动触发，没有 push/tag 自动上线；
+#   * 发布凭据与发布保护放在 production Environment 里，不在仓库级明文保存；
+#   * 构建与部署分离：runner 上构建 + 校验，发布包经 artifact 传给部署 job；
+#   * SSH 使用专用密钥 + 完整 known_hosts 严格校验；不复制个人私钥，
+#     也不在部署时 ssh-keyscan（不信任临时扫描结果）；
+#   * 中间件、数据库卷、Nginx 容器都不重建；应用改动只发生在服务器上的
+#     releases/staging/<release_id>/ 与四个 service/<name>/ 目录里。
+#
+# 需要先在仓库 Settings → Environments 建立一个名为 production 的 Environment，
+# 并配置（详见 deploy/prd/single/README.md「生产发布与回滚」）：
+#   Variables: PRD_SSH_HOST, PRD_SSH_USER[, PRD_SSH_PORT][, PRD_DEPLOY_ROOT]
+#   Secrets:   PRD_SSH_PRIVATE_KEY, PRD_SSH_KNOWN_HOSTS
+name: 生产发布与回滚（frameworkjava-prd）
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "deploy=构建并发布当前 ref；rollback=回滚到服务器上已保留的 release_id"
+        type: choice
+        options:
+          - deploy
+          - rollback
+        default: deploy
+      git_ref:
+        description: "deploy 时构建的 git ref（分支 / tag / commit SHA）"
+        type: string
+        default: main
+      rollback_to:
+        description: "rollback 的目标 release_id（形如 12-1a2b3c4，见上次发布的 Job Summary）"
+        type: string
+        default: ""
+      dry_run:
+        description: "deploy 时只做预检与计划打印（不替换 JAR、不重启容器）；首次发布前建议先跑一次"
+        type: choice
+        options:
+          - "no"
+          - "yes"
+        default: "no"
+      post_release_sample_seconds:
+        description: "发布后资源观察窗口秒数（默认 60；首次真实发布按 issue #3 用 600）"
+        type: string
+        default: "60"
+      confirm:
+        description: "防误触：必须输入 frameworkjava-prd"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+# 串行化：同一时刻只允许一个生产发布/回滚。cancel-in-progress 必须保持 false，
+# 否则新提交会取消正在部署关键阶段的运行，留下半套版本。
+concurrency:
+  group: prd-release
+  cancel-in-progress: false
+
+env:
+  MAVEN_ARGS: "-B"
+  JAVA_VERSION: "17"
+
+jobs:
+  build:
+    name: 构建并校验四服务发布包
+    if: ${{ inputs.action == 'deploy' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    outputs:
+      release_id: ${{ steps.release_id.outputs.release_id }}
+      commit_sha: ${{ steps.release_id.outputs.commit_sha }}
+    steps:
+      - name: 校验确认短语与输入
+        id: guard
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+          ACTION: ${{ inputs.action }}
+          GIT_REF: ${{ inputs.git_ref }}
+        run: |
+          set -euo pipefail
+          if [[ "$CONFIRM" != "frameworkjava-prd" ]]; then
+            echo "::error::confirm 必须精确输入 frameworkjava-prd，本次未做任何操作"
+            exit 1
+          fi
+          if [[ -z "$GIT_REF" ]]; then
+            echo "::error::deploy 需要 git_ref"
+            exit 1
+          fi
+
+      - name: 检出构建源码
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_ref }}
+          fetch-depth: 1
+
+      - name: 安装 Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: 构建四个服务的可执行 JAR
+        run: scripts/build_release.sh --maven-args "$MAVEN_ARGS"
+
+      - name: 复核四份制品的结构与凭据占位符
+        run: python3 scripts/verify_service_artifacts.py --release-dir release
+
+      - name: 生成 release_id
+        id: release_id
+        run: |
+          set -euo pipefail
+          echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "release_id=${{ github.run_number }}-$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: 打包发布包（artifact 传输单元）
+        run: tar -czf prd-release-package.tar.gz -C release .
+
+      - name: 上传发布包 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: prd-release-package
+          path: prd-release-package.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: ${{ inputs.action == 'rollback' && '回滚生产' || '发布到生产' }}
+    needs: [build]
+    # build 在 rollback 时会被跳过；只要 build 没失败没被取消就继续。
+    if: ${{ always() && needs.build.result != 'failure' && needs.build.result != 'cancelled' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # 凭据与人工审批都在这里：Environment 配好 required reviewers 后，job 会先等审批。
+    environment: production
+    env:
+      RELEASE_ID: ${{ needs.build.outputs.release_id }}
+      ACTION: ${{ inputs.action }}
+      ROLLBACK_TO: ${{ inputs.rollback_to }}
+    steps:
+      - name: 校验确认短语与输入
+        id: guard
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+          ACTION: ${{ inputs.action }}
+          ROLLBACK_TO: ${{ inputs.rollback_to }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          SAMPLE_SECONDS_INPUT: ${{ inputs.post_release_sample_seconds }}
+        run: |
+          set -euo pipefail
+          if [[ "$CONFIRM" != "frameworkjava-prd" ]]; then
+            echo "::error::confirm 必须精确输入 frameworkjava-prd，本次未做任何操作"
+            exit 1
+          fi
+          if [[ ! "$SAMPLE_SECONDS_INPUT" =~ ^[0-9]{1,4}$ || "$SAMPLE_SECONDS_INPUT" -gt 1800 ]]; then
+            echo "::error::post_release_sample_seconds 必须是 0-1800 的整数"
+            exit 1
+          fi
+          if [[ "$ACTION" == "deploy" && -z "${{ needs.build.outputs.release_id }}" ]]; then
+            echo "::error::build job 没有产出 release_id，拒绝继续"
+            exit 1
+          fi
+          if [[ "$ACTION" == "rollback" ]]; then
+            if [[ ! "$ROLLBACK_TO" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]]; then
+              echo "::error::rollback 需要合法的 rollback_to（字母数字与 . _ -）"
+              exit 1
+            fi
+            if [[ "$DRY_RUN" == "yes" ]]; then
+              echo "::error::dry_run 只适用于 deploy"
+              exit 1
+            fi
+          fi
+          echo "SAMPLE_SECONDS=$SAMPLE_SECONDS_INPUT" >> "$GITHUB_ENV"
+
+      - name: 检出发布工具（固定为 build job 构建的那个 commit）
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.action == 'deploy' && needs.build.outputs.commit_sha || github.event.repository.default_branch }}
+          fetch-depth: 1
+
+      - name: 校验 production Environment 配置
+        env:
+          HOST: ${{ vars.PRD_SSH_HOST }}
+          USER_NAME: ${{ vars.PRD_SSH_USER }}
+          PORT: ${{ vars.PRD_SSH_PORT }}
+          DEPLOY_ROOT: ${{ vars.PRD_DEPLOY_ROOT }}
+          PRIVATE_KEY: ${{ secrets.PRD_SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.PRD_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          missing=""
+          [[ -n "$HOST" ]] || missing="$missing PRD_SSH_HOST"
+          [[ -n "$USER_NAME" ]] || missing="$missing PRD_SSH_USER"
+          [[ -n "$PRIVATE_KEY" ]] || missing="$missing PRD_SSH_PRIVATE_KEY"
+          [[ -n "$KNOWN_HOSTS" ]] || missing="$missing PRD_SSH_KNOWN_HOSTS"
+          [[ -n "$DEPLOY_ROOT" ]] || missing="$missing PRD_DEPLOY_ROOT"
+          if [[ -n "$missing" ]]; then
+            echo "::error::production Environment 缺少必填项:$missing（不打印任何凭据内容）"
+            exit 1
+          fi
+
+          [[ "$HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]] || { echo "::error::PRD_SSH_HOST 格式非法"; exit 1; }
+          [[ "$USER_NAME" =~ ^[A-Za-z_][A-Za-z0-9_.-]*$ ]] || { echo "::error::PRD_SSH_USER 格式非法"; exit 1; }
+          port="${PORT:-22}"
+          [[ "$port" =~ ^[0-9]{1,5}$ ]] || { echo "::error::PRD_SSH_PORT 必须是端口号"; exit 1; }
+          deploy_root="$DEPLOY_ROOT"
+          [[ "$deploy_root" =~ ^/[A-Za-z0-9._/-]+$ && "$deploy_root" != */ ]] \
+            || { echo "::error::PRD_DEPLOY_ROOT 必须是无空格、无引号、不以 / 结尾的绝对路径"; exit 1; }
+
+          {
+            echo "PRD_HOST=$HOST"
+            echo "PRD_USER=$USER_NAME"
+            echo "PRD_PORT=$port"
+            echo "PRD_DEPLOY_ROOT=$deploy_root"
+          } >> "$GITHUB_ENV"
+
+      - name: 配置专用 SSH 密钥与可信 known_hosts
+        env:
+          PRIVATE_KEY: ${{ secrets.PRD_SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.PRD_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          ssh_dir="$RUNNER_TEMP/sshrun"
+          mkdir -p "$ssh_dir"
+          key_file="$ssh_dir/id_release"
+          known_hosts_file="$ssh_dir/known_hosts"
+
+          printf '%s\n' "$PRIVATE_KEY" > "$key_file"
+          printf '%s\n' "$KNOWN_HOSTS" > "$known_hosts_file"
+
+          grep -q -- "-----BEGIN .*PRIVATE KEY-----" "$key_file" \
+            || { echo "::error::PRD_SSH_PRIVATE_KEY 不是 OpenSSH/PEM 私钥"; exit 1; }
+          if ! awk 'NF && $1 !~ /^#/ { if (NF < 3) bad = 1 } END { exit bad }' "$known_hosts_file"; then
+            echo "::error::PRD_SSH_KNOWN_HOSTS 存在格式不完整的行（每行至少 主机 类型 公钥 三段）"
+            exit 1
+          fi
+
+          # -F /dev/null：忽略 runner 上的任何 SSH 配置，不用开发机别名；
+          # StrictHostKeyChecking=yes + 完整 known_hosts：主机密钥不匹配就失败。
+          echo "SSH_BASE_OPTS=-F /dev/null -i $key_file -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$known_hosts_file -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 -p $PRD_PORT" >> "$GITHUB_ENV"
+
+      - name: 确认 runner 到服务器的 SSH 可达性
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if ssh $SSH_BASE_OPTS "$PRD_USER@$PRD_HOST" 'echo ssh-reachable'; then
+              echo "SSH 可达：$PRD_USER@$PRD_HOST:$PRD_PORT（第 $attempt 次尝试）"
+              exit 0
+            fi
+            echo "第 $attempt 次 SSH 失败，10s 后重试"
+            sleep 10
+          done
+          echo "::error::runner 无法通过 SSH 到达生产服务器。若主机密钥校验失败，请用可信渠道核对后更新 PRD_SSH_KNOWN_HOSTS；若网络不通，需要放行 GitHub Actions 出口地址或改用可直达服务器的自托管 runner。"
+          exit 1
+
+      - name: 下载发布包 artifact
+        if: ${{ inputs.action == 'deploy' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: prd-release-package
+
+      - name: 准备上传内容（发布包 + 发布工具）
+        env:
+          ACTION: ${{ inputs.action }}
+        run: |
+          set -euo pipefail
+          mkdir -p upload/prd-scripts upload/verify
+          cp deploy/prd/single/scripts/* upload/prd-scripts/
+          cp scripts/verify_service_artifacts.py upload/verify/
+          if [[ "$ACTION" == "deploy" ]]; then
+            mkdir -p upload/package
+            tar -xzf prd-release-package.tar.gz -C upload/package
+          fi
+
+      - name: 计算本次服务器暂存目录
+        env:
+          ACTION: ${{ inputs.action }}
+          RELEASE_ID: ${{ needs.build.outputs.release_id }}
+          ROLLBACK_TO: ${{ inputs.rollback_to }}
+        run: |
+          set -euo pipefail
+          if [[ "$ACTION" == "deploy" ]]; then
+            staging="$PRD_DEPLOY_ROOT/releases/staging/$RELEASE_ID"
+          else
+            staging="$PRD_DEPLOY_ROOT/releases/staging/rollback-$ROLLBACK_TO-${{ github.run_id }}-${{ github.run_attempt }}"
+          fi
+          echo "STAGING=$staging" >> "$GITHUB_ENV"
+
+      - name: 上传发布工具到服务器暂存目录
+        run: |
+          set -euo pipefail
+          tar -czf - -C upload prd-scripts verify \
+            | ssh $SSH_BASE_OPTS "$PRD_USER@$PRD_HOST" "set -euo pipefail; mkdir -p '$STAGING'; tar -xzf - -C '$STAGING'"
+
+      - name: 服务器只读预检
+        run: |
+          set -euo pipefail
+          ssh $SSH_BASE_OPTS "$PRD_USER@$PRD_HOST" \
+            "bash '$STAGING/prd-scripts/app_release.sh' preflight --deploy-root '$PRD_DEPLOY_ROOT'"
+
+      - name: 上传发布包
+        if: ${{ inputs.action == 'deploy' }}
+        run: |
+          set -euo pipefail
+          tar -czf - -C upload/package . \
+            | ssh $SSH_BASE_OPTS "$PRD_USER@$PRD_HOST" "set -euo pipefail; mkdir -p '$STAGING/package'; tar -xzf - -C '$STAGING/package'"
+
+      - name: 发布四个应用服务
+        if: ${{ inputs.action == 'deploy' }}
+        env:
+          OPERATOR: ${{ github.actor }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          extra=""
+          if [[ "$DRY_RUN" == "yes" ]]; then
+            extra="--dry-run"
+          fi
+          ssh $SSH_BASE_OPTS "$PRD_USER@$PRD_HOST" \
+            "bash '$STAGING/prd-scripts/app_release.sh' deploy \
+               --deploy-root '$PRD_DEPLOY_ROOT' \
+               --package '$STAGING/package' \
+               --release-id '$RELEASE_ID' \
+               --verifier '$STAGING/verify/verify_service_artifacts.py' \
+               --operator '$OPERATOR' $extra"
+
+      - name: 回滚四个应用服务
+        if: ${{ inputs.action == 'rollback' }}
+        env:
+          OPERATOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          ssh $SSH_BASE_OPTS "$PRD_USER@$PRD_HOST" \
+            "bash '$STAGING/prd-scripts/app_release.sh' rollback \
+               --deploy-root '$PRD_DEPLOY_ROOT' \
+               --to '$ROLLBACK_TO' \
+               --staging '$STAGING' \
+               --verifier '$STAGING/verify/verify_service_artifacts.py' \
+               --operator '$OPERATOR'"
+
+      - name: 写入结果摘要
+        if: ${{ always() && steps.guard.outcome == 'success' }}
+        env:
+          JOB_STATUS: ${{ job.status }}
+          OPERATOR: ${{ github.actor }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          mode="$ACTION"
+          if [[ "$ACTION" == "deploy" && "$DRY_RUN" == "yes" ]]; then
+            mode="deploy（dry-run，未改动生产）"
+          fi
+          {
+            echo "## 生产$([[ "$ACTION" == "rollback" ]] && echo 回滚 || echo 发布)：$JOB_STATUS"
+            echo
+            echo "| 项 | 值 |"
+            echo "|---|---|"
+            echo "| 动作 | $mode |"
+            echo "| release_id | ${RELEASE_ID:-$ROLLBACK_TO} |"
+            echo "| 构建 commit | ${{ needs.build.outputs.commit_sha || '（未构建）' }} |"
+            echo "| 服务器暂存目录 | $STAGING |"
+            echo "| 部署根目录 | $PRD_DEPLOY_ROOT |"
+            echo "| 操作人 | $OPERATOR |"
+            echo "| run | ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} |"
+            echo
+            if [[ "$ACTION" == "deploy" ]]; then
+              echo "回滚方式：重跑本工作流选 action=rollback（推荐），或在服务器上手工执行："
+              echo
+              echo '```'
+              echo "bash <deploy/prd/single/scripts 内的 app_release.sh> rollback --deploy-root $PRD_DEPLOY_ROOT --to $RELEASE_ID --operator <操作人>"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 清理 runner 上的临时密钥
+        if: ${{ always() }}
+        run: rm -rf "$RUNNER_TEMP/sshrun"

@@ -16,7 +16,7 @@ cp .env.example .env
 
 现有服务器 `.env` 已于 2026-09-21 补齐 `NACOS_USERNAME` / `NACOS_PASSWORD`，服务器 `app/docker-compose-app.yml` 也已同步注入这两个变量（见文末记录）。二者缺一不可：只改 `.env` 而 compose 不引用，容器依然收不到。在其它环境重建时应复用已存在且验证过的账号，不要创建默认账号、擅自轮换密码或覆盖整个 `.env`。填写含 `$`、`#` 等特殊字符的值时使用 Compose dotenv 单引号语法；不要 `source .env`，也不要把解析后的完整 Compose 配置输出到日志。
 
-以下文件是私有运行输入，不纳入 Git：`.env` 及其备份、`data/`、`backups/`、`res/sql/*.sql`。SQL 导出包含数据库/Redis/RabbitMQ 凭据、OSS/地图密钥、账号密码哈希及用户数据；它们不是公开示例。`vm1/`、`vm2/` 是未审核的未来双机方案，已在上级忽略规则中排除，不属于本次可提交范围。不要使用 `git add -f` 绕过忽略规则。
+以下文件是私有运行输入，不纳入 Git：`.env` 及其备份、`data/`、`backups/`、`res/sql/*.sql`、`releases/`（服务器上的发布状态、保留制品与排障日志）。SQL 导出包含数据库/Redis/RabbitMQ 凭据、OSS/地图密钥、账号密码哈希及用户数据；它们不是公开示例。`vm1/`、`vm2/` 是未审核的未来双机方案，已在上级忽略规则中排除，不属于本次可提交范围。不要使用 `git add -f` 绕过忽略规则。
 
 新环境必须从受控渠道准备并审核私有 SQL（见 `res/sql/README.md`）；本仓库不提供通用默认账号或生产数据库导出。现有生产配置保持不变，不因源码脱敏重新导入 SQL。
 
@@ -137,3 +137,219 @@ MySQL 数据目录已有数据时，`docker-entrypoint-initdb.d` 下的初始化
 因此：直接用 SQL 初始化配置后，必须重启（或重建）Nacos 才能生效，重启前不要按“配置已导入”继续发布。更稳妥的做法是通过控制台或 Open API 发布配置，避免依赖重启；修改现有环境配置同样需要先确认影响范围。
 
 `his_config_info` 中存在历史记录属于既有数据，不代表本次操作修改过配置；判断是否被改动应以配置行摘要和数据行数比对为准。
+
+## 生产发布与回滚（GitHub Actions，issue #5）
+
+发布编排在 `.github/workflows/release-prd.yml`，服务器侧逻辑在 `scripts/app_release.sh`
+与只读验收脚本 `scripts/verify_deployment.sh`（两者都会随发布上传到服务器暂存目录执行，
+不要求在服务器上放一份仓库；`scripts/check_service_health.py` 是其中的 HTTP 校验实现）。
+
+### 固定事实与边界
+
+| 项 | 值 |
+|---|---|
+| Compose 项目 | `frameworkjava-prd` |
+| 服务器部署根目录 | `/home/ubuntu/framework_java/deploy/prd/single`（`PRD_DEPLOY_ROOT` 可变，但脚本会校验生产标识） |
+| env 文件 | `<部署根目录>/.env`（不在 `app/` 下） |
+| 应用 Compose | `<部署根目录>/app/docker-compose-app.yml` |
+| 应用服务范围 | `frameworkjava-{gateway,admin,file,portal}`（固定四个，不接受子集） |
+| 容器内 Nacos | `frameworkjava-nacos:8848`（宿主机 `8866`，旧开发 Nacos 是 `8848`，两者不要混） |
+| Web 端口 | `8666` |
+
+脚本的硬性边界（改动发布脚本时不要放宽）：
+
+- 绝不 `compose down`、绝不重建/重启中间件与 Nginx 容器、绝不删数据卷、绝不批量删除部署根目录；
+- 每个构建目录 `app/service/<name>/` 必须恰好一份 JAR（`.jar.original`、第二份 JAR 都会让发布在改动前失败）；
+- 发布包必须先通过结构校验（复用 `scripts/verify_service_artifacts.py`）与逐份 SHA-256 复核，才动应用制品；
+- 每次发布用 `releases/lock` 互斥（工作流级 `concurrency` 之外的第二道保险），并用独立的
+  `releases/staging/<release_id>/` 暂存。
+
+### 服务器目录布局（脚本创建，已忽略入库）
+
+```text
+<部署根目录>/releases/
+├── <release_id>/              每次成功发布保留的完整发布包（含 JAR、sha256、build-info.txt、manifest.txt）
+├── state/current              当前生效的 release_id（成功后才写）
+├── state/history.log          追加式操作记录（时间/动作/release/结果/操作人）
+├── staging/<release_id>/      本次发布的隔离暂存：上传的包、previous/ 备份、logs/ 排障日志
+└── lock/                      发布互斥锁（owner 文件记录 host/pid/release/时间）
+```
+
+成功发布后本次 `staging/<release_id>/` 整目录清理；失败时保留（含 `previous/` 与四服务日志）
+供排障。`releases/<release_id>/` 是回滚目标，不要手工删除；`state/`、`lock/` 同理。
+需要手工清理时只删具体某个 `staging/` 子目录，确认没有进行中的发布（`lock/owner` 为空）后再删。
+
+### 一次性准备
+
+1. **创建 production Environment**：仓库 Settings → Environments → New environment → `production`。
+   建议启用 Required reviewers（发布前需人工批准）。该 Environment 承载全部发布凭据，不要放到仓库级。
+2. **生成专用 SSH 密钥**（不要用开发机 `~/.ssh/config` 里的 `tx` 别名或个人私钥）：
+
+   ```bash
+   # 在受控管理机上
+   ssh-keygen -t ed25519 -C "github-actions-prd-release" -f ./prd_release_ed25519 -N ''
+   # 只把公钥装到服务器（追加，不覆盖既有 authorized_keys）
+   ssh tx "install -d -m 700 /home/ubuntu/.ssh && cat >> /home/ubuntu/.ssh/authorized_keys" < prd_release_ed25519.pub
+   # 私钥只进 secret，用完删除本地副本
+   gh secret set PRD_SSH_PRIVATE_KEY --env production --repo Jul1en-Lin/Framework-Java < prd_release_ed25519
+   rm prd_release_ed25519
+   ```
+
+3. **准备完整可信的 known_hosts**：用可信渠道核对主机密钥指纹后再入库，不要在部署时 `ssh-keyscan`
+   并直接信任结果（脚本与工作流都不会执行 keyscan）。
+
+   ```bash
+   ssh-keyscan -t ed25519 134.175.107.242 > prd_known_hosts
+   ssh-keygen -lf prd_known_hosts          # 与腾讯云控制台/服务器本机 ssh-keygen -lf 的输出比对一致
+   gh secret set PRD_SSH_KNOWN_HOSTS --env production --repo Jul1en-Lin/Framework-Java < prd_known_hosts
+   ```
+
+4. **配置 Environment 变量与密钥**：
+
+   | 类型 | 名称 | 说明 |
+   |---|---|---|
+   | Variable | `PRD_SSH_HOST` | 服务器地址（必填） |
+   | Variable | `PRD_SSH_USER` | 登录用户（必填，生产为 `ubuntu`；该用户需在 docker 组） |
+   | Variable | `PRD_SSH_PORT` | 可选，默认 `22` |
+   | Variable | `PRD_DEPLOY_ROOT` | 服务器部署根目录（必填；生产为 `/home/ubuntu/framework_java/deploy/prd/single`） |
+   | Secret | `PRD_SSH_PRIVATE_KEY` | 专用部署私钥（必填） |
+   | Secret | `PRD_SSH_KNOWN_HOSTS` | 完整主机密钥条目（必填） |
+
+   缺失任一必填项时工作流会在做任何操作前失败；工作流不打印任何凭据内容。部署 job 的发布工具
+   固定检出 build job 实际构建的那个 commit（`commit_sha`），不会把「构建时的分支」和
+   「部署时已移动的分支」混用；因此请用分支保护限制谁能推送到被发布的 ref。
+
+5. **确认 runner 到服务器的 SSH 可达性**：GitHub 托管 runner 的出口地址不固定，如果服务器防火墙
+   只放行固定来源，需要放行 GitHub Actions 出口网段，或改用能直达服务器的自托管 runner。
+   工作流里有专门的「确认 runner 到服务器的 SSH 可达性」步骤，重试三次仍失败就直接中止，不会上传任何东西。
+
+6. **服务器前置条件**（预检会逐项检查，缺失即失败）：`docker`（当前用户可访问 daemon）、`python3`、
+   `free`/`df`、四个 `app/service/<name>/` 目录与 Dockerfile、`.env` 含 `NACOS_USERNAME`/`NACOS_PASSWORD`/`WEB_PORT=8666`、
+   `docker-compose-mid.yml` 把 Nacos 映射到 `8866`（生产标识，防止指错目录）。
+
+### 发布流程
+
+工作流是手动触发（`workflow_dispatch`），没有 push/tag 自动上线；同一时刻只允许一个发布
+（`concurrency: prd-release`，`cancel-in-progress: false`——不会在关键阶段取消正在执行的发布）。
+
+1. `build` job：检出指定 `git_ref` → Java 17 + Maven 构建四服务（复用 `scripts/build_release.sh`）
+   → `scripts/verify_service_artifacts.py` 复核结构与凭据占位符 → 打包成 artifact。
+2. `release` job（`production` Environment，先等人工审批）：校验环境配置 → 写入专用密钥与
+   known_hosts（`StrictHostKeyChecking=yes`、`-F /dev/null`，不使用 runner 上的任何 SSH 配置）
+   → 确认 SSH 可达 → 只上传发布工具 → 服务器只读预检 → 上传发布包 → 执行发布 → 写入 Job Summary。
+3. **首次真实发布前建议先跑一次 `dry_run=yes`**：只做预检和打印计划，不替换 JAR、不重启容器
+   （上传到暂存目录是无害的）。
+
+触发参数：
+
+| 参数 | 说明 |
+|---|---|
+| `action` | `deploy`（默认）/ `rollback` |
+| `git_ref` | deploy 时构建的 ref，默认 `main` |
+| `rollback_to` | rollback 的目标 `release_id`（见上次发布的 Job Summary） |
+| `dry_run` | `no`（默认）/ `yes`，只适用于 deploy |
+| `post_release_sample_seconds` | 发布后资源观察窗口秒数，默认 `60`；首次真实发布用 `600`（issue #3） |
+| `confirm` | 必须精确输入 `frameworkjava-prd`，否则在工作流第一步就失败 |
+
+服务器上执行的实际动作（`app_release.sh deploy`）：
+
+```text
+预检 → 校验发布包（结构 + SHA-256）→ 取锁 → 保留发布包到 releases/<id>/
+→ 备份四个 service/<name>/*.jar 到 staging/<id>/previous/，替换为新制品
+→ docker compose -p frameworkjava-prd -f docker-compose-app.yml up -d --build <四个应用服务>
+→ docker exec <webprd 容器> nginx -t && nginx -s reload
+→ 只读验收（容器/日志/Nacos 注册/实例端口/经 Nginx 后端 API）与资源阈值
+→ 写 state/current 与 manifest，清理本次暂存目录，释放锁
+```
+
+### 验收标准（不是「compose up 成功」）
+
+`verify_deployment.sh` 全部通过才算发布成功：
+
+- 四个应用容器存在、`State.Running=true`、`RestartCount=0`；
+- 每个服务日志里有 `Started ... in ... seconds`，且没有 `APPLICATION FAILED TO START` /
+  `Error starting ApplicationContext` / `OutOfMemoryError` 等致命标记（出现即立刻判失败，不再等待）；
+- 通过 Nacos Open API 登录生产 Nacos（宿主机 `8866`，命名空间 `frameworkjava-prd`，`DEFAULT_GROUP`），
+  四个服务都有健康实例；
+- 注册的 `ip:port` 真的能建立 HTTP 连接（根路径 401/403/404 都算存活）；
+- 经 Nginx（`127.0.0.1:8666`）访问 `/admin/`、`/file/`、`/portal/` 不出现 502/503/504（这些状态说明网关不可达）；
+- 资源阈值（issue #3）：四服务起来后 `available ≥ 300 MiB`，观察窗口内 swap 增长 ≤ 128 MiB，
+  且任一个应用容器内存占用 ≤ 500 MiB（`docker stats` 的 RSS）。
+  默认观察 60 秒（工作流参数 `post_release_sample_seconds`）；**首次发布按 #3 的要求用 10 分钟窗口复核**：
+
+  ```bash
+  # 在服务器上
+  bash deploy/prd/single/scripts/verify_deployment.sh \
+    --deploy-root /home/ubuntu/framework_java/deploy/prd/single --sample-seconds 600
+  ```
+
+只读验收也单独记录了不依赖前端的边界：这里校验的是网关链路的可达性，不校验尚未部署的前端首页。
+
+### 回滚
+
+每个成功发布都保留完整发布包（`releases/<release_id>/`），回滚就是「把某个已保留的包重新应用一遍」，
+走同一套校验（含 `--verifier` 的制品结构校验）、重建与验收。`status` 会标出每个已保留版本是否
+成功发布（`result=success`）；对失败发布的残留做回滚时脚本会先警告，需要人确认这是有意的目标。
+
+- 工作流：`action=rollback`、`rollback_to=<release_id>`、`confirm=frameworkjava-prd`；
+- 服务器上手工执行：
+
+  ```bash
+  cd <部署根目录>
+  bash <某次发布暂存或仓库里的>/scripts/app_release.sh status --deploy-root "$PWD"
+  bash .../app_release.sh rollback --deploy-root "$PWD" --to 12-1a2b3c4 --operator 你的名字
+  ```
+
+镜像 tag 是固定的 `1.0-SNAPSHOT`，所以回滚靠「恢复上一版 JAR + 重新构建」实现，可靠且可重复；
+不需要也不允许停中间件、删卷或清镜像。
+
+### 失败处置
+
+| 场景 | 脚本行为 |
+|---|---|
+| 预检/发布包校验失败（改动之前） | 直接失败，应用制品与已保留版本都不动 |
+| 替换 JAR 过程中失败 | 容器未重建、仍跑上一版；备份在 `staging/<id>/previous/`；提示用上一版 rollback 覆盖回来 |
+| 后续发布已重建但验收失败 | **不自动回滚**（回滚也要重建镜像，属生产操作）；打印回滚命令并保留现场与日志，由授权人执行 |
+| 首次发布已重建但验收失败 | 无回滚目标：先抓四服务日志，再 `compose stop` 这四个应用服务（不动中间件、不 down、不删卷）并保留现场 |
+
+被中断的发布：`releases/lock/owner` 里记录了 host/pid/release/时间。确认没有发布进程后，
+手工 `rm -rf <部署根目录>/releases/lock` 再重试；脚本不会自动清除他人的锁。
+
+### 网关重建与 Nginx DNS
+
+网关容器重建后 IP 变化，而 Nginx 只在加载配置时解析一次 `upstream lien-gateway` 的地址。
+因此每次发布在 `compose up -d --build` 之后单独执行 `nginx -t` + `nginx -s reload`
+（只 reload，不重启中间件）。如果验收里 `/admin/` 等返回 502/503/504，先确认 Nginx 是否 reload 成功，
+再查网关容器与 Nacos 注册，不要用「重启整套中间件」来解决。
+
+### 本地可重复验证
+
+```bash
+python3 deploy/prd/single/tests/test_release_workflow.py   # 工作流与脚本的安全边界（静态）
+python3 deploy/prd/single/tests/test_app_release.py        # 发布/回滚端到端（docker 用桩替换）
+python3 deploy/prd/single/tests/test_check_service_health.py  # Nacos/实例/Nginx 校验逻辑
+python3 deploy/prd/single/tests/test_deployment_config.py  # 部署配置与忽略规则
+python3 scripts/tests/test_verify_service_artifacts.py     # 制品结构校验
+```
+
+`test_app_release.py` 用假 Nacos + 假服务端口 + 假 Nginx + PATH 上的 `docker` 桩驱动真实脚本，
+覆盖成功发布、校验和不符、服务目录多份 JAR、锁被占、首次/后续失败、回滚等场景，
+并断言产生过的 docker 调用里绝不出现 `down`/`prune`/中间件 Compose。
+
+### 尚未完成：首次真实发布（需生产授权）
+
+到本次提交为止，**四个应用服务从未在生产启动过，首次真实发布还没有执行**。
+发布链路已经构建并在本地用桩验证通过，但以下只能在获得生产操作授权后完成，故此条验收项保持未勾选：
+
+- [ ] 服务器资源余量实测（发布前 `free -m` available ≥ 1400 MiB、磁盘 ≥ 3 GiB、swap 稳定）；
+- [ ] 确认部署根目录路径与生产标识（`.env` 的 `WEB_PORT=8666`，`docker-compose-mid.yml` 映射 `8866:8848`）；
+- [ ] 记录发布前状态（四个应用容器尚不存在，**首次发布没有回滚目标**，失败即按上表停服务保留现场）；
+- [ ] 先跑一次 `dry_run=yes`，再执行真实发布；
+- [ ] 首次发布后用 `--sample-seconds 600` 复核 issue #3 的验收阈值（available ≥ 300 MiB、swap 不再增长、无服务 RSS > 500 MiB）；
+- [ ] 在一个已保留版本上演练一次回滚（授权后进行）；
+- [ ] 把实测结果（时间、release_id、资源数字、异常与处置）补记到下面的记录里。
+
+#### Issue #5 执行记录
+
+（待首次真实发布后填写：日期、操作人、release_id、构建 commit、服务器可用内存/swap/磁盘、
+验收输出摘要、遇到的问题与处置、回滚演练结果。）

@@ -71,5 +71,7 @@ scripts/verify_service_artifacts.py --release-dir release --service admin
 python3 scripts/tests/test_verify_service_artifacts.py -v   # 标准库 unittest，17 个用例
 ```
 
-也支持先构建再校验的一步到位方式（见上一节）。CI 里建议至少调用
-`verify_service_artifacts.py`，是否接入 workflow 尚未决定（仓库当前没有 `.github/`）。
+也支持先构建再校验的一步到位方式（见上一节）。发布编排（GitHub Actions 手动发布与回滚）
+见 `.github/workflows/release-prd.yml`：构建 job 调用 `scripts/build_release.sh`，再用
+`verify_service_artifacts.py` 复核，然后通过 artifact 传给部署 job；部署侧会在服务器上对上传的
+发布包重跑同一个校验脚本，并额外逐份核对 SHA-256（见 `deploy/prd/single/README.md`）。

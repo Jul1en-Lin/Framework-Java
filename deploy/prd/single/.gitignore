@@ -5,3 +5,6 @@ data/
 # Private database/configuration exports, including user data and password hashes.
 /res/sql/*.sql
 /backups/
+
+# 服务器发布状态与暂存目录（app_release.sh 创建）：不入库
+/releases/
