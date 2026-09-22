@@ -149,12 +149,13 @@ MySQL 数据目录已有数据时，`docker-entrypoint-initdb.d` 下的初始化
 | 项 | 值 |
 |---|---|
 | Compose 项目 | `frameworkjava-prd` |
-| 服务器部署根目录 | `/home/ubuntu/framework_java/deploy/prd/single`（`PRD_DEPLOY_ROOT` 可变，但脚本会校验生产标识） |
+| 服务器部署根目录 | 由 production Environment 的 `PRD_DEPLOY_ROOT` secret 给出，不写入仓库；脚本会校验生产标识 |
 | env 文件 | `<部署根目录>/.env`（不在 `app/` 下） |
 | 应用 Compose | `<部署根目录>/app/docker-compose-app.yml` |
 | 应用服务范围 | `frameworkjava-{gateway,admin,file,portal}`（固定四个，不接受子集） |
 | 容器内 Nacos | `frameworkjava-nacos:8848`（宿主机 `8866`，旧开发 Nacos 是 `8848`，两者不要混） |
 | Web 端口 | `8666` |
+| 登录用户 | 由 `PRD_SSH_USER` secret 给出（当前生产部署目录与容器都是 root 所有，非 root 用户无 docker 权限） |
 
 脚本的硬性边界（改动发布脚本时不要放宽）：
 
@@ -188,12 +189,16 @@ MySQL 数据目录已有数据时，`docker-entrypoint-initdb.d` 下的初始化
    ```bash
    # 在受控管理机上
    ssh-keygen -t ed25519 -C "github-actions-prd-release" -f ./prd_release_ed25519 -N ''
-   # 只把公钥装到服务器（追加，不覆盖既有 authorized_keys）
-   ssh tx "install -d -m 700 /home/ubuntu/.ssh && cat >> /home/ubuntu/.ssh/authorized_keys" < prd_release_ed25519.pub
+   # 只把公钥装到服务器指定用户的 authorized_keys（追加，不覆盖既有内容）
+   ssh tx "install -d -m 700 ~/.ssh && cat >> ~/.ssh/authorized_keys" < prd_release_ed25519.pub
    # 私钥只进 secret，用完删除本地副本
    gh secret set PRD_SSH_PRIVATE_KEY --env production --repo Jul1en-Lin/Framework-Java < prd_release_ed25519
    rm prd_release_ed25519
    ```
+
+   若以后要把发布权限从 root 降到普通用户：需要同时把服务器上的部署目录（含 `app/service/*`）
+   交给该用户、把用户加入 `docker` 组，并注意 `data/` 下 MySQL 数据目录的属主不要改动；
+   这是一次需要单独授权的生产变更。
 
 3. **准备完整可信的 known_hosts**：用可信渠道核对主机密钥指纹后再入库，不要在部署时 `ssh-keyscan`
    并直接信任结果（脚本与工作流都不会执行 keyscan）。
@@ -204,20 +209,27 @@ MySQL 数据目录已有数据时，`docker-entrypoint-initdb.d` 下的初始化
    gh secret set PRD_SSH_KNOWN_HOSTS --env production --repo Jul1en-Lin/Framework-Java < prd_known_hosts
    ```
 
-4. **配置 Environment 变量与密钥**：
+4. **配置 Environment 密钥**（仓库是公开的，服务器地址/用户/部署路径一律放 Secret，
+   不要放 Variable——公开仓库的 Variables 任何人可读，会把服务器信息暴露出去）：
 
    | 类型 | 名称 | 说明 |
    |---|---|---|
-   | Variable | `PRD_SSH_HOST` | 服务器地址（必填） |
-   | Variable | `PRD_SSH_USER` | 登录用户（必填，生产为 `ubuntu`；该用户需在 docker 组） |
-   | Variable | `PRD_SSH_PORT` | 可选，默认 `22` |
-   | Variable | `PRD_DEPLOY_ROOT` | 服务器部署根目录（必填；生产为 `/home/ubuntu/framework_java/deploy/prd/single`） |
+   | Secret | `PRD_SSH_HOST` | 服务器地址（必填） |
+   | Secret | `PRD_SSH_USER` | 登录用户（必填；当前生产为 `root`，因为部署目录与容器都是 root 所有） |
+   | Secret | `PRD_DEPLOY_ROOT` | 服务器部署根目录（必填；具体值见 production Environment，不写入仓库） |
    | Secret | `PRD_SSH_PRIVATE_KEY` | 专用部署私钥（必填） |
    | Secret | `PRD_SSH_KNOWN_HOSTS` | 完整主机密钥条目（必填） |
+   | Variable | `PRD_SSH_PORT` | 可选，默认 `22`（只有一个端口号） |
 
-   缺失任一必填项时工作流会在做任何操作前失败；工作流不打印任何凭据内容。部署 job 的发布工具
-   固定检出 build job 实际构建的那个 commit（`commit_sha`），不会把「构建时的分支」和
-   「部署时已移动的分支」混用；因此请用分支保护限制谁能推送到被发布的 ref。
+   ```bash
+   gh secret set PRD_SSH_HOST --env production --repo Jul1en-Lin/Framework-Java --body "<服务器地址>"
+   gh secret set PRD_SSH_USER --env production --repo Jul1en-Lin/Framework-Java --body root
+   gh secret set PRD_DEPLOY_ROOT --env production --repo Jul1en-Lin/Framework-Java --body "<服务器上的部署根目录>"
+   ```
+
+   缺失任一必填项时工作流会在做任何操作前失败；工作流不打印任何凭据内容（可达性检查与 Job Summary
+   都不输出地址与用户）。部署 job 的发布工具固定检出 build job 实际构建的那个 commit（`commit_sha`），
+   不会把「构建时的分支」和「部署时已移动的分支」混用；因此请用分支保护限制谁能推送到被发布的 ref。
 
 5. **确认 runner 到服务器的 SSH 可达性**：GitHub 托管 runner 的出口地址不固定，如果服务器防火墙
    只放行固定来源，需要放行 GitHub Actions 出口网段，或改用能直达服务器的自托管 runner。
@@ -278,9 +290,9 @@ MySQL 数据目录已有数据时，`docker-entrypoint-initdb.d` 下的初始化
   默认观察 60 秒（工作流参数 `post_release_sample_seconds`）；**首次发布按 #3 的要求用 10 分钟窗口复核**：
 
   ```bash
-  # 在服务器上
-  bash deploy/prd/single/scripts/verify_deployment.sh \
-    --deploy-root /home/ubuntu/framework_java/deploy/prd/single --sample-seconds 600
+  # 在服务器上；$R 是 PRD_DEPLOY_ROOT，$S 是某次发布暂存目录里的 prd-scripts
+  # （工作流发布时会把脚本上传到 <部署根目录>/releases/staging/<release_id>/prd-scripts/）
+  bash "$S/verify_deployment.sh" --deploy-root "$R" --sample-seconds 600
   ```
 
 只读验收也单独记录了不依赖前端的边界：这里校验的是网关链路的可达性，不校验尚未部署的前端首页。
@@ -348,6 +360,32 @@ python3 scripts/tests/test_verify_service_artifacts.py     # 制品结构校验
 - [ ] 首次发布后用 `--sample-seconds 600` 复核 issue #3 的验收阈值（available ≥ 300 MiB、swap 不再增长、无服务 RSS > 500 MiB）；
 - [ ] 在一个已保留版本上演练一次回滚（授权后进行）；
 - [ ] 把实测结果（时间、release_id、资源数字、异常与处置）补记到下面的记录里。
+
+#### Issue #5 环境准备记录（2026-09-22）
+
+- 已创建 GitHub Environment `production`，并设置部署分支策略：只允许从 `main` 部署
+  （`workflow_dispatch` 选其它分支时会被 Environment 拒绝）。未启用 Required reviewers：
+  单人仓库里唯一审批人就是触发者本人，会形成自我审批死锁；发布保护改由该分支策略 +
+  手动触发 + `confirm` 短语共同承担。
+- 已按 Secret 配置（仓库是公开的，Variables 会被任何人读到，因此服务器信息全部走 Secret）：
+  `PRD_SSH_HOST`、`PRD_SSH_USER`、`PRD_DEPLOY_ROOT`、`PRD_SSH_PRIVATE_KEY`、`PRD_SSH_KNOWN_HOSTS`。
+  值只存在于 GitHub，仓库与文档不记录。
+- 部署用**专用** ed25519 密钥（指纹 `SHA256:eBbfa1FRp7T2eegXkqwDmzr4XPorxNJ8i1H3+ZXSfmY`）：
+  公钥追加到服务器 `root` 的 `authorized_keys`（原有两把密钥未改动，文件由 2 行变 3 行），
+  私钥只写入 Secret 且本地副本已删除；未使用、也未复制任何个人私钥。
+  `PRD_SSH_USER` 为 `root`：当前生产部署目录与容器均为 root 所有，其它用户没有 docker 权限；
+  降到普通用户需要单独授权的生产变更（见上文第 2 步的备注）。
+- `PRD_SSH_KNOWN_HOSTS` 取自本机已信任的 known_hosts 条目（3 条：ED25519/RSA/ECDSA），
+  写入前核对了指纹；部署时不执行 `ssh-keyscan`。
+- 服务器只读预检已用真实环境验证通过（脚本与工作流同一条路径：上传工具到
+  `releases/staging/<id>/prd-scripts/` → `app_release.sh preflight`）：资源余量
+  available 1794 MiB、磁盘可用 20040 MiB、`docker compose config` 通过、生产标识与
+  四个构建目录检查通过。验证后已删除该暂存目录，生产部署根目录恢复原状。
+- 预检时确认四个 `app/service/<name>/` 目录**只有 Dockerfile、没有任何 JAR**，即首次发布前
+  四服务从未在生产启动过。基础镜像 `eclipse-temurin:17-jdk` 本地不存在，首次 `--build`
+  会从已配置的 registry mirror 拉取（会占用额外磁盘与时间）。
+- **尚未执行任何真实发布**：首次发布仍需单独的生产操作授权，授权后按上面的清单先跑
+  `dry_run=yes`，再执行真实发布并回填「Issue #5 执行记录」。
 
 #### Issue #5 执行记录
 

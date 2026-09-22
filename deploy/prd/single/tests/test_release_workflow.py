@@ -73,6 +73,12 @@ class ReleaseWorkflowTest(unittest.TestCase):
             self.assertIn(required, self.workflow)
         self.assertIn("production Environment 缺少必填项", self.workflow)
 
+    def test_server_details_are_secrets_not_public_variables(self):
+        # 公开仓库的 Variables 任何人可读，会把服务器地址/用户/路径暴露出去
+        for name in ("PRD_SSH_HOST", "PRD_SSH_USER", "PRD_DEPLOY_ROOT"):
+            self.assertIn("secrets.{}".format(name), self.workflow)
+            self.assertNotIn("vars.{}".format(name), self.workflow)
+
     def test_ssh_uses_strict_host_verification_and_ignores_runner_config(self):
         self.assertIn("StrictHostKeyChecking=yes", self.workflow)
         self.assertIn("UserKnownHostsFile=", self.workflow)

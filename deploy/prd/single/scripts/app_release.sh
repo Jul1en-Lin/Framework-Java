@@ -297,7 +297,7 @@ preflight_environment() {
   if ! compose config --quiet; then
     die "docker compose config 校验失败（不输出解析结果，避免泄露凭据）"
   fi
-  ok "预检通过：${DEPLOY_ROOT}（Compose 校验通过，服务目录恰好一份 JAR）"
+  ok "预检通过：${DEPLOY_ROOT}（Compose 校验通过，构建目录未出现多份 JAR）"
 }
 
 preflight_package() {

@@ -9,10 +9,11 @@
 #   * 中间件、数据库卷、Nginx 容器都不重建；应用改动只发生在服务器上的
 #     releases/staging/<release_id>/ 与四个 service/<name>/ 目录里。
 #
-# 需要先在仓库 Settings → Environments 建立一个名为 production 的 Environment，
-# 并配置（详见 deploy/prd/single/README.md「生产发布与回滚」）：
-#   Variables: PRD_SSH_HOST, PRD_SSH_USER[, PRD_SSH_PORT][, PRD_DEPLOY_ROOT]
-#   Secrets:   PRD_SSH_PRIVATE_KEY, PRD_SSH_KNOWN_HOSTS
+# 需要先在仓库 Settings → Environments 建立一个名为 production 的 Environment。仓库是公开的，
+# 服务器地址/登录用户/部署路径一律放在 Environment **Secrets** 里（公开仓库的 Variables 任何人可读，
+# 会泄露服务器信息）；详见 deploy/prd/single/README.md「生产发布与回滚」：
+#   Secrets: PRD_SSH_HOST, PRD_SSH_USER, PRD_DEPLOY_ROOT, PRD_SSH_PRIVATE_KEY, PRD_SSH_KNOWN_HOSTS
+#   Variables: PRD_SSH_PORT（可选，仅一个端口号）
 name: 生产发布与回滚（frameworkjava-prd）
 
 on:
@@ -182,10 +183,10 @@ jobs:
 
       - name: 校验 production Environment 配置
         env:
-          HOST: ${{ vars.PRD_SSH_HOST }}
-          USER_NAME: ${{ vars.PRD_SSH_USER }}
+          HOST: ${{ secrets.PRD_SSH_HOST }}
+          USER_NAME: ${{ secrets.PRD_SSH_USER }}
           PORT: ${{ vars.PRD_SSH_PORT }}
-          DEPLOY_ROOT: ${{ vars.PRD_DEPLOY_ROOT }}
+          DEPLOY_ROOT: ${{ secrets.PRD_DEPLOY_ROOT }}
           PRIVATE_KEY: ${{ secrets.PRD_SSH_PRIVATE_KEY }}
           KNOWN_HOSTS: ${{ secrets.PRD_SSH_KNOWN_HOSTS }}
         run: |
@@ -247,7 +248,7 @@ jobs:
           set -euo pipefail
           for attempt in 1 2 3; do
             if ssh $SSH_BASE_OPTS "$PRD_USER@$PRD_HOST" 'echo ssh-reachable'; then
-              echo "SSH 可达：$PRD_USER@$PRD_HOST:$PRD_PORT（第 $attempt 次尝试）"
+              echo "SSH 可达（第 $attempt 次尝试；地址与用户不在日志中输出）"
               exit 0
             fi
             echo "第 $attempt 次 SSH 失败，10s 后重试"
@@ -362,7 +363,7 @@ jobs:
             echo "| release_id | ${RELEASE_ID:-$ROLLBACK_TO} |"
             echo "| 构建 commit | ${{ needs.build.outputs.commit_sha || '（未构建）' }} |"
             echo "| 服务器暂存目录 | $STAGING |"
-            echo "| 部署根目录 | $PRD_DEPLOY_ROOT |"
+            echo "| 部署根目录 | production Environment secret PRD_DEPLOY_ROOT |"
             echo "| 操作人 | $OPERATOR |"
             echo "| run | ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} |"
             echo
