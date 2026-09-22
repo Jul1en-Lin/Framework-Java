@@ -1,0 +1,63 @@
+# 一次性网络探针：测量 runner → 生产服务器 的单流/多流吞吐，用于决定发布包怎么传。
+# 用完即删，不要长期保留。
+name: 网络测速探针（一次性）
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - name: 配置 SSH
+        env:
+          PRIVATE_KEY: ${{ secrets.PRD_SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.PRD_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "$RUNNER_TEMP/sshrun"
+          printf '%s\n' "$PRIVATE_KEY" > "$RUNNER_TEMP/sshrun/id_release"
+          printf '%s\n' "$KNOWN_HOSTS" > "$RUNNER_TEMP/sshrun/known_hosts"
+          echo "SSH_BASE_OPTS=-F /dev/null -i $RUNNER_TEMP/sshrun/id_release -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$RUNNER_TEMP/sshrun/known_hosts -o BatchMode=yes -o ConnectTimeout=15 -o Compression=no -p ${{ secrets.PRD_SSH_PORT || 22 }}" >> "$GITHUB_ENV"
+      - name: 单流 vs 8 流吞吐（→ 生产服务器）
+        env:
+          HOST: ${{ secrets.PRD_SSH_HOST }}
+          USER_NAME: ${{ secrets.PRD_SSH_USER }}
+          PORT: ${{ secrets.PRD_SSH_PORT }}
+        run: |
+          set -uo pipefail
+          export PRD_HOST="$HOST" PRD_USER="$USER_NAME" PRD_PORT="${PORT:-22}"
+          MB=2
+          t0=$(date +%s)
+          dd if=/dev/urandom bs=1M count=$MB 2>/dev/null | ssh $SSH_BASE_OPTS "$PRD_USER@$PRD_HOST" 'cat > /dev/null' || echo "单流失败"
+          t1=$(date +%s)
+          echo "单流 ${MB}MB 用时 $((t1-t0))s → $(( MB * 1024 / (t1-t0+1) )) KB/s"
+          t0=$(date +%s)
+          for i in $(seq 1 8); do
+            dd if=/dev/urandom bs=1M count=$MB 2>/dev/null | ssh $SSH_BASE_OPTS "$PRD_USER@$PRD_HOST" 'cat > /dev/null' &
+          done
+          wait
+          t1=$(date +%s)
+          echo "8 流共 $((MB*8))MB 用时 $((t1-t0))s → $(( MB * 8 * 1024 / (t1-t0+1) )) KB/s（聚合）"
+      - name: 单流 vs 8 流（→ 国内对象源，判断是否跨境被限速）
+        run: |
+          set -uo pipefail
+          URL=https://mirrors.cloud.tencent.com/ubuntu-releases/22.04/ubuntu-22.04.5-live-server-amd64.iso
+          t0=$(date +%s)
+          curl -s -o /dev/null -r 0-2097151 --max-time 120 "$URL" ; echo "单流 curl 退出码 $?"
+          t1=$(date +%s)
+          echo "单流 2MB 用时 $((t1-t0))s"
+          t0=$(date +%s)
+          for i in 0 1 2 3 4 5 6 7; do
+            START=$(( i * 2097152 )); END=$(( START + 2097151 ))
+            curl -s -o /dev/null -r "$START-$END" --max-time 120 "$URL" &
+          done
+          wait
+          t1=$(date +%s)
+          echo "8 流共 16MB 用时 $((t1-t0))s"
