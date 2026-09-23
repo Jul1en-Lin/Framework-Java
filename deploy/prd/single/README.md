@@ -418,18 +418,56 @@ github-release/<release_id>/package.tar.gz.sha256 由 runner 提供（整体 SHA
 发布侧不需要也不具备删除权限。若以后想更快，可以在控制台给桶开「传输加速」并把 `.env` 的
 `OSS_ENDPOINT` 改成 `oss-accelerate.aliyuncs.com`（`oss_presign.py` 已支持）。
 
-### 尚未完成：首次真实发布（需生产授权）
+### 首次真实发布记录（2026-09-23，release `6-180a84c`）
 
-到本次提交为止，**四个应用服务从未在生产启动过，首次真实发布还没有执行**。
-发布链路已经构建并在本地用桩验证通过，但以下只能在获得生产操作授权后完成，故此条验收项保持未勾选：
+首次真实发布已执行并**成功**（工作流 run 35804137264：`action=deploy`、`dry_run=no`、
+`post_release_sample_seconds=600`），四个应用服务自此在生产运行。
 
-- [ ] 服务器资源余量实测（发布前 `free -m` available ≥ 1400 MiB、磁盘 ≥ 3 GiB、swap 稳定）；
-- [ ] 确认部署根目录路径与生产标识（`.env` 的 `WEB_PORT=8666`，`docker-compose-mid.yml` 映射 `8866:8848`）；
-- [ ] 记录发布前状态（四个应用容器尚不存在，**首次发布没有回滚目标**，失败即按上表停服务保留现场）；
-- [ ] 先跑一次 `dry_run=yes`，再执行真实发布；
-- [ ] 首次发布后用 `--sample-seconds 600` 复核 issue #3 的验收阈值（available ≥ 300 MiB、swap 不再增长、无服务 RSS > 500 MiB）；
-- [ ] 在一个已保留版本上演练一次回滚（授权后进行）；
-- [ ] 把实测结果（时间、release_id、资源数字、异常与处置）补记到下面的记录里。
+- 发布前实测：`available 826 MiB + 四应用可回收 1264 MiB = 预计 2090 MiB`（下限 1400）、
+  磁盘可用 18128 MiB、swap 已用 740 MiB；
+- 传输：221.9 MB 分 14 片，上传 143 s、服务器取回 + 校验 + 解包 34 s（与 dry-run 实测一致）；
+- 制品替换前后的 SHA-256 记在 `releases/6-180a84c/manifest.txt`（四份 before/after 齐全）；
+- 发布前四个 `app/service/<name>/` 只有 Dockerfile，`previous_release=none`，即**首次发布没有回滚目标**；
+- 验收：就绪校验第 1、2 次因 JVM 仍在启动而失败、第 3 次通过（`READY_TIMEOUT` 重试逻辑生效）；
+  四容器 `RestartCount=0`、四个服务在 Nacos 注册健康、经 Nginx 的 `/admin/ /file/ /portal/`
+  均为 401 鉴权响应（非 502）；发布内建 60 s 观察：available 1337 MiB、swap 增长 0、
+  单服务 RSS 252–382 MiB；
+- 发布后单独跑只读验收做 10 分钟窗口复核（`--sample-seconds 600`）：available 1112 MiB、
+  swap 增长 0 MiB、单服务 RSS 259–388 MiB，全部满足 issue #3 阈值；
+- 网关首次上线后 `frameworkjava-webprd` 自行恢复运行（此前自 9-20 起重启 3248 次），
+  脚本的等待逻辑与实际行为一致；中间件（Nacos/MySQL/Redis/RabbitMQ）与数据卷全程未动；
+- `releases/state/current` = `6-180a84c`；`history.log` 记录了本次成功以及三次失败尝试
+  （含阶段与原因），可供事后追溯。
+
+首次真实发布过程中暴露并修掉的三个缺陷（均有对应用例，见 commit）：
+
+1. **重启中的容器不能看 `State.Running`**：重启循环里 `Running` 仍是 `true`、只有
+   `Status=restarting`，于是脚本以为 webprd 可用就直接 `docker exec`，报
+   `Container ... is restarting, wait until the container is running`。测试桩已改为忠实模拟该语义
+   （旧代码在桩上能复现与生产一字不差的报错）。兜底启动同时改为 `docker stop -t 10` + `docker start`：
+   重启循环里的 `docker start` 无效，stop+start 才会立刻重置退避。
+2. **预检没把「本次会重建的四应用占用」算作可回收**：四服务已在运行时 available 只剩 660 MiB，
+   低于 1400 MiB 下限，等于「生产一跑起应用就再也发不出去」。现在比较 `available + 四应用 RSS`
+   与下限，两个数都打印在日志里。
+3. **观察窗口秒数没传到服务器**：`ssh` 不携带 runner 的环境变量，`SAMPLE_SECONDS` 在服务器上
+   回落到默认 60 s，所以发布内建只观察了 60 s（10 分钟窗口是发布后单独复核的）。
+   现在远端命令前显式传 `SAMPLE_SECONDS`。**同理，脚本的其它环境变量阈值
+   （`MIN_AVAIL_MEM_MB`/`READY_TIMEOUT`/`NGINX_WAIT_SECONDS` 等）也只能在服务器上设置，
+   从工作流触发时一律用默认值。**
+
+另外：预检阶段失败的 run 会在 `releases/staging/` 留下只含发布工具的缓存目录，现已加收尾清理
+（发布/回滚一旦开始过则保留为失败现场）。因此 `releases/staging/` 里目前还留着前几次失败尝试的
+目录（`4-a34b422` 约 222 MB、`5-126fe83`），确认无用后可自行删除。
+
+首次发布清单：
+
+- [x] 服务器资源余量实测（发布前 available ≥ 1400 MiB、磁盘 ≥ 3 GiB、swap 稳定）；
+- [x] 确认部署根目录路径与生产标识（`.env` 的 `WEB_PORT=8666`，`docker-compose-mid.yml` 映射 `8866:8848`）；
+- [x] 记录发布前状态（四个应用容器尚不存在，首次发布没有回滚目标）；
+- [x] 先跑 `dry_run=yes`，再执行真实发布；
+- [x] 首次发布后用 `--sample-seconds 600` 复核 issue #3 的验收阈值；
+- [ ] **在一个已保留版本上演练一次回滚**（尚未做，需要单独的生产操作授权）；
+- [x] 把实测结果（时间、release_id、资源数字、异常与处置）补记到本节。
 
 #### Issue #5 环境准备记录（2026-09-22）
 
