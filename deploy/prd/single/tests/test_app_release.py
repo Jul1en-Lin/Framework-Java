@@ -60,6 +60,8 @@ KNOWN_SERVICES = {
     "frameworkjava-portal",
 }
 STARTED_MARKER = os.environ["DOCKER_LOG"] + ".webprd-started"
+APP_SERVICES = {"frameworkjava-gateway", "frameworkjava-admin",
+                "frameworkjava-file", "frameworkjava-portal"}
 
 service = ""
 for arg in args:
@@ -72,6 +74,8 @@ if args[:2] == ["image", "inspect"]:
     sys.exit(0)
 if args and args[0] == "ps":
     if os.environ.get("DOCKER_NO_WEBPRD") == "1" and service == "frameworkjava-webprd":
+        sys.exit(0)
+    if os.environ.get("DOCKER_NO_APP_CONTAINERS") == "1" and service in APP_SERVICES:
         sys.exit(0)
     print("cid-" + service.replace("frameworkjava-", ""))
     sys.exit(0)
@@ -109,9 +113,12 @@ if args and args[0] == "exec":
     sys.exit(0)
 if args and args[0] == "stats":
     rss = os.environ.get("DOCKER_RSS", "300MiB")
+    fmt = args[args.index("--format") + 1] if "--format" in args else ""
+    usage_only = "MemUsage" in fmt and "Name" not in fmt
     for arg in args:
         if arg.startswith("cid-"):
-            print("{} {} / 1.7GiB".format(arg, rss))
+            print("{} / 1.7GiB".format(rss) if usage_only
+                  else "{} {} / 1.7GiB".format(arg, rss))
     sys.exit(0)
 if args and args[0] == "compose":
     if "--quiet" in args:
@@ -142,10 +149,11 @@ sys.exit(0)
 """
 
 FREE_STUB = """#!/usr/bin/env bash
-cat <<'OUT'
+available="${FAKE_AVAIL_MB:-1800}"
+cat <<OUT
               total        used        free      shared  buff/cache   available
-Mem:           1807        1000         300          10         500        1800
-Swap:          2047         100       1947
+Mem:           1807        1000         300          10         500        $available
+Swap:          2047         100        1947
 OUT
 """
 
@@ -773,6 +781,30 @@ class AppReleaseTest(unittest.TestCase):
         result = self.deploy("27-abcdefg", "new", env={"DOCKER_RSS": "600MiB"})
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("超过阈值 500 MiB", result.stderr)
+
+    def test_running_services_memory_counts_as_reclaimable(self):
+        """生产上四服务已在运行时，它们占的内存要算可回收，否则发布永远卡在预检。"""
+        result = self.deploy(
+            "34-abcdefg",
+            "new",
+            env={"FAKE_AVAIL_MB": "660", "MIN_AVAIL_MEM_MB": "1400", "DOCKER_RSS": "300MiB"},
+        )
+        self.assert_succeeds(result)
+        self.assertIn("四应用可回收 1200 MiB = 预计 1860 MiB", result.stdout)
+
+    def test_low_memory_blocks_before_any_change(self):
+        result = self.deploy(
+            "35-abcdefg",
+            "new",
+            env={
+                "FAKE_AVAIL_MB": "660",
+                "DOCKER_NO_APP_CONTAINERS": "1",
+                "MIN_AVAIL_MEM_MB": "1400",
+            },
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("预计可用内存 660 MiB", result.stderr)
+        self.assert_no_mutations()
 
     def test_path_traversal_in_staging_is_rejected(self):
         package = self.build_package("31-abcdefg", "new")

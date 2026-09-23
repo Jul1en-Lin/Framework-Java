@@ -175,6 +175,34 @@ container_of() {
 mem_available_mb() { free -m | awk '/^Mem:/{print (($7 + 0) > 0) ? $7 : $4}'; }
 swap_used_mb() { free -m | awk '/^Swap:/{print $3 + 0}'; }
 
+# docker stats 的内存用量换算成 MiB 整数。
+# 注意 {{.MemUsage}} 形如 "315.4MiB / 3.636GiB"（含上限），只能取第一个字段。
+to_mib() {
+  awk '{ value = $1 + 0
+         if ($1 ~ /GiB/) printf "%d", value * 1024
+         else if ($1 ~ /MiB/) printf "%d", value
+         else if ($1 ~ /KiB/) printf "%d", value / 1024
+         else printf "%d", value / 1048576 }' <<<"$1"
+}
+
+# 四个应用服务在本次发布中会被重建，因此它们当前占用的内存属于「可回收」。
+# 不折算这一点的话，生产上只要这四个应用在跑，后续每次发布都会被自己的应用挡住
+# （首次真实发布踩到过：available 只剩 660 MiB，直接卡在预检）。
+app_services_rss_mb() {
+  local ids="" service id total=0 usage
+  for service in $SERVICES; do
+    id="$(container_of "$service")"
+    [[ -n "$id" ]] && ids="$ids $id"
+  done
+  [[ -n "${ids// /}" ]] || { printf '0'; return 0; }
+  # shellcheck disable=SC2086  # 需要按空格拆分成多个容器 ID
+  while IFS= read -r usage; do
+    [[ -n "$usage" ]] || continue
+    total=$(( total + $(to_mib "$usage") ))
+  done < <(docker stats --no-stream --format '{{.MemUsage}}' $ids 2>/dev/null)
+  printf '%d' "$total"
+}
+
 env_get() {
   local key="$1" value
   value="$(sed -n "s/^${key}=//p" "$ENV_FILE" | head -1)"
@@ -258,12 +286,14 @@ check_prod_markers() {
 }
 
 check_resources() {
-  local avail disk found=0
+  local avail rss projected disk found=0
   avail="$(mem_available_mb)"
+  rss="$(app_services_rss_mb)"
+  projected=$(( avail + rss ))
   disk="$(df -Pk "$DEPLOY_ROOT" | awk 'NR==2{print int($4 / 1024)}')"
-  info "资源余量：available ${avail} MiB（下限 ${MIN_AVAIL_MEM_MB}），磁盘可用 ${disk} MiB（下限 ${MIN_FREE_DISK_MB}），swap 已用 $(swap_used_mb) MiB"
-  if [[ "$avail" -lt "$MIN_AVAIL_MEM_MB" ]]; then
-    fail "available=${avail} MiB 低于发布所需的 ${MIN_AVAIL_MEM_MB} MiB（build + 四个 JVM 启动峰值）"
+  info "资源余量：available ${avail} MiB + 四应用可回收 ${rss} MiB = 预计 ${projected} MiB（下限 ${MIN_AVAIL_MEM_MB}），磁盘可用 ${disk} MiB（下限 ${MIN_FREE_DISK_MB}），swap 已用 $(swap_used_mb) MiB"
+  if [[ "$projected" -lt "$MIN_AVAIL_MEM_MB" ]]; then
+    fail "预计可用内存 ${projected} MiB（available ${avail} + 四应用可回收 ${rss}）低于发布所需的 ${MIN_AVAIL_MEM_MB} MiB（四个 JVM 启动峰值）"
     found=1
   fi
   if [[ "$disk" -lt "$MIN_FREE_DISK_MB" ]]; then
