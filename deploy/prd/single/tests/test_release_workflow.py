@@ -17,10 +17,13 @@ from pathlib import Path
 SINGLE = Path(__file__).resolve().parents[1]
 ROOT = SINGLE.parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "release-prd.yml"
+WEB_WORKFLOW = ROOT / ".github" / "workflows" / "release-web-prd.yml"
 SCRIPTS = SINGLE / "scripts"
 APP_RELEASE = SCRIPTS / "app_release.sh"
 VERIFY = SCRIPTS / "verify_deployment.sh"
 HEALTH = SCRIPTS / "check_service_health.py"
+FRONTEND_RELEASE = SCRIPTS / "frontend_release.sh"
+VERIFY_FRONTEND = SCRIPTS / "verify_frontend.sh"
 
 
 def code_only(text):
@@ -270,15 +273,24 @@ class ReleaseWorkflowTest(unittest.TestCase):
     # ---- 仓库卫生 ----
 
     def test_scripts_are_executable(self):
-        for path in (APP_RELEASE, VERIFY, HEALTH):
+        for path in (APP_RELEASE, VERIFY, HEALTH, FRONTEND_RELEASE, VERIFY_FRONTEND):
             self.assertTrue(os.access(str(path), os.X_OK), "{} 应有可执行位".format(path))
+
+    def test_web_workflow_attributes(self):
+        self.assertTrue(WEB_WORKFLOW.is_file())
+        text = WEB_WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("workflow_dispatch", text)
+        self.assertIn("group: prd-release", text)
+        self.assertIn("cancel-in-progress: false", text)
+        self.assertIn("confirm", text)
+        self.assertIn("orbit-admin", text)
 
     def test_no_bare_variable_immediately_before_cjk(self):
         # macOS bash 3.2 会把紧跟在 $VAR 后面的高位字节当成变量名的一部分，
         # 报出 “DEPLOY_ROOT（: unbound variable” 这种诡异错误（本地测试就跑在 bash 3.2 上）。
         # 一律写成 ${VAR}。
         pattern = re.compile(rb"\$([A-Za-z_][A-Za-z0-9_]*)(?=[\x80-\xff])")
-        for path in (APP_RELEASE, VERIFY):
+        for path in (APP_RELEASE, VERIFY, FRONTEND_RELEASE, VERIFY_FRONTEND):
             for number, line in enumerate(path.read_bytes().split(b"\n"), 1):
                 match = pattern.search(line)
                 if match:

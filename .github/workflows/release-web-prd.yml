@@ -1,0 +1,288 @@
+# 前端生产发布（单服务器，frameworkjava-prd：orbit-admin）
+#
+# 设计约束：
+#   * 只支持 workflow_dispatch 手动触发，必须输入 confirm=orbit-admin 防误触；
+#   * 生产机密统一使用 production Environment，不落地明文；
+#   * 与后端发布共享并发排他锁 prd-release (cancel-in-progress: false)；
+#   * 构建与部署分离：Runner 上检出 Jul1en-Lin/orbit-admin 并完成类型与语法检查后打包；
+#     通过国内 OSS 预签名通道中转制品，服务器核对 SHA-256 后原地 Inode 安全替换并 reload Nginx；
+#   * 部署完成后由 Runner 从外部观测点（http://<PRD_HOST>:8666/）验证全链路连通性。
+name: 前端生产发布（orbit-admin）
+
+on:
+  workflow_dispatch:
+    inputs:
+      orbit_admin_ref:
+        description: "orbit-admin 的 git ref（分支 / tag / commit SHA）"
+        type: string
+        default: main
+      dry_run:
+        description: "dry_run=yes 时只做预检、构建与计划打印（不替换生产 dist、不 reload Nginx）"
+        type: choice
+        options:
+          - "no"
+          - "yes"
+        default: "no"
+      confirm:
+        description: "防误触：必须精确输入 orbit-admin"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prd-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: 构建前端产物并执行质量门禁
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      release_id: ${{ steps.bundle.outputs.release_id }}
+      commit_sha: ${{ steps.bundle.outputs.commit_sha }}
+      package_sha256: ${{ steps.bundle.outputs.package_sha256 }}
+      index_sha256: ${{ steps.bundle.outputs.index_sha256 }}
+    steps:
+      - name: 校验确认短语与输入
+        run: |
+          set -euo pipefail
+          if [[ "${{ inputs.confirm }}" != "orbit-admin" ]]; then
+            echo "::error::confirm 必须精确输入 orbit-admin，本次未做任何操作"
+            exit 1
+          fi
+          if [[ -z "${{ inputs.orbit_admin_ref }}" ]]; then
+            echo "::error::必须指定 orbit_admin_ref"
+            exit 1
+          fi
+
+      - name: 检出 orbit-admin 源码
+        uses: actions/checkout@v4
+        with:
+          repository: Jul1en-Lin/orbit-admin
+          ref: ${{ inputs.orbit_admin_ref }}
+          fetch-depth: 1
+
+      - name: 配置 Node.js 与 Corepack
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+
+      - name: 启用 Corepack 并安装依赖
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack pnpm install --frozen-lockfile
+
+      - name: 执行语法规范校验 (Lint)
+        run: corepack pnpm run lint
+
+      - name: 执行 TypeScript 类型校验 (Typecheck)
+        run: corepack pnpm run typecheck
+
+      - name: 构建生产静态文件 (Build)
+        run: corepack pnpm run build
+
+      - name: 打包静态文件并计算校验和
+        id: bundle
+        run: |
+          set -euo pipefail
+          tar -czf frontend-dist.tar.gz -C dist .
+          
+          commit_sha="$(git rev-parse HEAD)"
+          release_id="web-${{ github.run_number }}-$(git rev-parse --short=7 HEAD)"
+          pkg_sha="$(sha256sum frontend-dist.tar.gz | awk '{print $1}')"
+          idx_sha="$(sha256sum dist/index.html | awk '{print $1}')"
+
+          echo "commit_sha=$commit_sha" >> "$GITHUB_OUTPUT"
+          echo "release_id=$release_id" >> "$GITHUB_OUTPUT"
+          echo "package_sha256=$pkg_sha" >> "$GITHUB_OUTPUT"
+          echo "index_sha256=$idx_sha" >> "$GITHUB_OUTPUT"
+
+          echo "发布标识: $release_id"
+          echo "Commit SHA: $commit_sha"
+          echo "Package SHA-256: $pkg_sha"
+          echo "Index SHA-256: $idx_sha"
+
+      - name: 上传构建产物 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist-package
+          path: frontend-dist.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: 发布前端到生产服务器
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    env:
+      RELEASE_ID: ${{ needs.build.outputs.release_id }}
+      PACKAGE_SHA256: ${{ needs.build.outputs.package_sha256 }}
+      INDEX_SHA256: ${{ needs.build.outputs.index_sha256 }}
+      DRY_RUN: ${{ inputs.dry_run }}
+    steps:
+      - name: 检出部署运维工具
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: 校验 production Environment 配置
+        env:
+          HOST: ${{ secrets.PRD_SSH_HOST }}
+          USER_NAME: ${{ secrets.PRD_SSH_USER }}
+          PORT: ${{ vars.PRD_SSH_PORT }}
+          DEPLOY_ROOT: ${{ secrets.PRD_DEPLOY_ROOT }}
+          PRIVATE_KEY: ${{ secrets.PRD_SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.PRD_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          missing=""
+          [[ -n "$HOST" ]] || missing="$missing PRD_SSH_HOST"
+          [[ -n "$USER_NAME" ]] || missing="$missing PRD_SSH_USER"
+          [[ -n "$PRIVATE_KEY" ]] || missing="$missing PRD_SSH_PRIVATE_KEY"
+          [[ -n "$KNOWN_HOSTS" ]] || missing="$missing PRD_SSH_KNOWN_HOSTS"
+          [[ -n "$DEPLOY_ROOT" ]] || missing="$missing PRD_DEPLOY_ROOT"
+          if [[ -n "$missing" ]]; then
+            echo "::error::production Environment 缺少必填项:$missing"
+            exit 1
+          fi
+
+          port="${PORT:-22}"
+          {
+            echo "PRD_HOST=$HOST"
+            echo "PRD_USER=$USER_NAME"
+            echo "PRD_PORT=$port"
+            echo "PRD_DEPLOY_ROOT=$DEPLOY_ROOT"
+          } >> "$GITHUB_ENV"
+
+      - name: 配置专用 SSH 密钥与可信 known_hosts
+        env:
+          PRIVATE_KEY: ${{ secrets.PRD_SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.PRD_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          ssh_dir="$RUNNER_TEMP/sshrun"
+          mkdir -p "$ssh_dir"
+          key_file="$ssh_dir/id_release"
+          known_hosts_file="$ssh_dir/known_hosts"
+
+          printf '%s\n' "$PRIVATE_KEY" > "$key_file"
+          printf '%s\n' "$KNOWN_HOSTS" > "$known_hosts_file"
+
+          echo "SSH_BASE_OPTS=-F /dev/null -i $key_file -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$known_hosts_file -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 -p $PRD_PORT" >> "$GITHUB_ENV"
+
+      - name: 确认 runner 到服务器的 SSH 连通性
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if ssh $SSH_BASE_OPTS "$PRD_USER@$PRD_HOST" 'echo ssh-reachable'; then
+              echo "SSH 可达 (尝试 #$attempt)"
+              exit 0
+            fi
+            echo "第 $attempt 次 SSH 失败，等待重试..."
+            sleep 5
+          done
+          echo "::error::无法连接到生产服务器"
+          exit 1
+
+      - name: 下载构建产物 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist-package
+
+      - name: 准备服务器端暂存与运维脚本
+        run: |
+          set -euo pipefail
+          staging="$PRD_DEPLOY_ROOT/releases/staging/$RELEASE_ID"
+          echo "STAGING=$staging" >> "$GITHUB_ENV"
+          
+          tar -czf - -C deploy/prd/single/scripts . \
+            | ssh $SSH_BASE_OPTS "$PRD_USER@$PRD_HOST" "set -euo pipefail; mkdir -p '$staging/scripts'; tar -xzf - -C '$staging/scripts'"
+
+      - name: 执行服务器端发布预检 (Preflight)
+        run: |
+          set -euo pipefail
+          ssh $SSH_BASE_OPTS "$PRD_USER@$PRD_HOST" \
+            "bash '$STAGING/scripts/frontend_release.sh' preflight --deploy-root '$PRD_DEPLOY_ROOT'"
+
+      - name: 上传构建产物至国内 OSS (预签名中转)
+        run: |
+          set -euo pipefail
+          oss_key="github-release-web/$RELEASE_ID/frontend-dist.tar.gz"
+          
+          put_url="$(ssh $SSH_BASE_OPTS "$PRD_USER@$PRD_HOST" \
+            "python3 '$STAGING/scripts/oss_presign.py' --env-file '$PRD_DEPLOY_ROOT/.env' --method PUT --key '$oss_key' --expires 3600")"
+          
+          echo "::add-mask::$put_url"
+          
+          curl -sS --fail --retry 3 --retry-delay 2 --retry-all-errors \
+            --connect-timeout 15 --max-time 300 \
+            -X PUT -T frontend-dist.tar.gz -H 'Content-Type:' \
+            -o /dev/null -w "%{http_code}\n" "$put_url"
+          
+          echo "制品已成功上传至国内 OSS ($oss_key)"
+
+      - name: 服务器取回制品并解包校验
+        run: |
+          set -euo pipefail
+          ssh $SSH_BASE_OPTS "$PRD_USER@$PRD_HOST" \
+            "bash '$STAGING/scripts/frontend_release.sh' fetch-package \
+              --deploy-root '$PRD_DEPLOY_ROOT' \
+              --release-id '$RELEASE_ID' \
+              --sha256 '$PACKAGE_SHA256'"
+
+      - name: 服务器原子部署与验收
+        run: |
+          set -euo pipefail
+          dry_flag=""
+          if [[ "$DRY_RUN" == "yes" ]]; then
+            dry_flag="--dry-run"
+          fi
+          ssh $SSH_BASE_OPTS "$PRD_USER@$PRD_HOST" \
+            "bash '$STAGING/scripts/frontend_release.sh' deploy \
+              --deploy-root '$PRD_DEPLOY_ROOT' \
+              --release-id '$RELEASE_ID' \
+              --index-sha256 '$INDEX_SHA256' \
+              $dry_flag"
+
+      - name: 外部观测点连通性全链路探测
+        if: ${{ inputs.dry_run == 'no' }}
+        run: |
+          set -euo pipefail
+          echo "==> 从 GitHub Actions Runner 外部探测生产端口 8666..."
+          
+          # 1. 探测首页 HTTP 200
+          ext_code="$(curl -s -m 10 -o /dev/null -w "%{http_code}" "http://$PRD_HOST:8666/")"
+          if [[ "$ext_code" != "200" ]]; then
+            echo "::error::外部观测点访问首页失败 (HTTP $ext_code)"
+            exit 1
+          fi
+          echo "外部观测点首页访问成功 (HTTP 200)"
+
+          # 2. 探测 API 反向代理链路连通性
+          api_resp="$(curl -s -m 10 -X POST "http://$PRD_HOST:8666/api/sys_user/login/password" \
+            -H "Content-Type: application/json" -d "{}")"
+          if ! printf '%s' "$api_resp" | grep -q '"code"'; then
+            echo "::error::外部观测点 /api/ 反向代理验证失败: $api_resp"
+            exit 1
+          fi
+          echo "外部观测点 /api/ 反向代理连通验证成功"
+
+      - name: 输出 Job Summary
+        run: |
+          cat <<EOF >> "$GITHUB_STEP_SUMMARY"
+          ## 🚀 前端生产发布摘要 (orbit-admin)
+          - **Release ID**: \`$RELEASE_ID\`
+          - **Commit SHA**: \`${{ needs.build.outputs.commit_sha }}\`
+          - **Package SHA-256**: \`$PACKAGE_SHA256\`
+          - **Index SHA-256**: \`$INDEX_SHA256\`
+          - **Mode**: \`${{ inputs.dry_run == 'yes' && 'DRY-RUN 预演' || '真实上线' }}\`
+          - **外部观测点访问**: \`http://$PRD_HOST:8666/\` (HTTP 200)
+          EOF

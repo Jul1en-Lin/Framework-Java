@@ -254,7 +254,7 @@ case "$COMMAND" in
     set_staging "$RELEASES_DIR/staging/$RELEASE_ID"
     
     DIST_SRC="$STAGING/dist"
-    [[ -d "$DIST_SRC" && -f "$DIST_SRC/index.html" ]] || die "暂存产物不存在或损坏: $DIST_SRC（请先执行 fetch-package）"
+    [[ -d "$DIST_SRC" && -f "$DIST_SRC/index.html" ]] || die "暂存产物不存在或损坏: ${DIST_SRC}（请先执行 fetch-package）"
 
     acquire_lock
     
@@ -338,7 +338,7 @@ case "$COMMAND" in
     ;;
 
   *)
-    die "未知命令: $COMMAND（支持 preflight | fetch-package | deploy | status）"
+    die "未知命令: ${COMMAND}（支持 preflight | fetch-package | deploy | status）"
     ;;
 esac
 
