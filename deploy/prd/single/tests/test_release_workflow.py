@@ -93,6 +93,21 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn("SAMPLE_SECONDS='$SAMPLE_SECONDS' bash", deploy_step)
         self.assertIn("--operator '$OPERATOR'", deploy_step)
 
+    def test_staging_cleanup_only_when_release_never_started(self):
+        """预检/上传阶段失败的 run 不该留下缓存目录；但发布中失败必须保留现场。"""
+        cleanup = self.workflow.split("name: 清理未进入发布阶段的服务器缓存目录", 1)[1].split("- name:", 1)[0]
+        self.assertIn('[[ -f "$RUNNER_TEMP/deploy-started" ]]', cleanup)
+        self.assertIn("保留服务器上的缓存目录（失败现场）", cleanup)
+        # 发布与回滚都要在调用 ssh 之前打标记
+        for step in ("name: 发布四个应用服务", "name: 回滚四个应用服务"):
+            region = self.workflow.split(step, 1)[1]
+            self.assertIn('touch "$RUNNER_TEMP/deploy-started"', region[: region.index("ssh $SSH_BASE_OPTS")])
+        # 清理必须在删除密钥之前，否则 ssh 已经不可用
+        self.assertLess(
+            self.workflow.index("name: 清理未进入发布阶段的服务器缓存目录"),
+            self.workflow.index("name: 清理 runner 上的临时密钥"),
+        )
+
     # ---- 凭据与主机校验 ----
 
     def test_uses_production_environment_for_credentials(self):

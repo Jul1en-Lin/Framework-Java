@@ -383,6 +383,8 @@ jobs:
           fi
           # ssh 不会把 runner 的环境变量带过去，需要显式传给远端命令，
           # 否则服务器上会用脚本默认值（首次真实发布就因此只观察了 60s 而不是 600s）。
+          # 标记「已进入发布阶段」：失败时服务器上的缓存目录要当现场保留
+          touch "$RUNNER_TEMP/deploy-started"
           ssh $SSH_BASE_OPTS "$PRD_USER@$PRD_HOST" \
             "SAMPLE_SECONDS='$SAMPLE_SECONDS' bash '$STAGING/prd-scripts/app_release.sh' deploy \
                --deploy-root '$PRD_DEPLOY_ROOT' \
@@ -397,6 +399,8 @@ jobs:
           OPERATOR: ${{ github.actor }}
         run: |
           set -euo pipefail
+          # 标记「已进入发布阶段」：失败时服务器上的缓存目录要当现场保留
+          touch "$RUNNER_TEMP/deploy-started"
           ssh $SSH_BASE_OPTS "$PRD_USER@$PRD_HOST" \
             "bash '$STAGING/prd-scripts/app_release.sh' rollback \
                --deploy-root '$PRD_DEPLOY_ROOT' \
@@ -438,6 +442,22 @@ jobs:
               echo '```'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # 预检/上传阶段就失败的 run 还没进入发布，缓存目录里只有发布工具，留着只会越积越多；
+      # 而发布/回滚一旦真的开始过（有 deploy-started 标记），缓存目录就是失败现场，必须保留。
+      # 注意：必须在删除密钥之前执行，且不能用 env 上下文判断（GITHUB_ENV 写的值不在 env 上下文里）。
+      - name: 清理未进入发布阶段的服务器缓存目录
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          if [[ -f "$RUNNER_TEMP/deploy-started" ]]; then
+            echo "发布/回滚已开始过，保留服务器上的缓存目录（失败现场）"
+            exit 0
+          fi
+          if [[ -z "${STAGING:-}" ]]; then
+            exit 0
+          fi
+          ssh $SSH_BASE_OPTS "$PRD_USER@$PRD_HOST" "rm -rf '$STAGING'" || true
 
       - name: 清理 runner 上的临时密钥
         if: ${{ always() }}
