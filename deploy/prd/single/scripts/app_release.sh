@@ -453,7 +453,9 @@ reload_nginx() {
     info "frameworkjava-webprd 未运行：首次上线前 upstream 解析不到网关会一直重启，属预期；等待其自动恢复…"
     while ! nginx_container_running "$id"; do
       if [[ "$waited" -ge "$NGINX_WAIT_SECONDS" ]]; then
-        warn "等待 ${NGINX_WAIT_SECONDS}s 后仍未运行，单独启动该容器（不动中间件、不动其它容器）"
+        warn "等待 ${NGINX_WAIT_SECONDS}s 后仍未运行，单独重启该容器（不动中间件、不动其它容器）"
+        # 重启循环里的容器 docker start 是无效的；stop+start 会立刻重置退避并马上重试一次
+        docker stop -t 10 "$id" >/dev/null 2>&1 || true
         docker start "$id" >/dev/null 2>&1 || true
         sleep 5
         if ! nginx_container_running "$id"; then
@@ -476,7 +478,10 @@ reload_nginx() {
 }
 
 nginx_container_running() {
-  [[ "$(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null || echo false)" == "true" ]]
+  # 必须看 Status 而不是 Running：处于重启循环的容器 .State.Running 仍是 true，
+  # 用 Running 判断会以为它可用，随后 docker exec 报
+  # "Container ... is restarting, wait until the container is running"（真实发布踩到过）。
+  [[ "$(docker inspect -f '{{.State.Status}}' "$1" 2>/dev/null || echo unknown)" == "running" ]]
 }
 
 run_verification() {

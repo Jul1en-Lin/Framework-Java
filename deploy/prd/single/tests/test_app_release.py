@@ -77,12 +77,18 @@ if args and args[0] == "ps":
     sys.exit(0)
 if args and args[0] == "inspect":
     target = args[-1]
+    fmt = args[args.index("-f") + 1] if "-f" in args else ""
     if target == "cid-webprd":
-        # 模拟「网关上线前 nginx 因 upstream 解析不到网关而重启循环」
-        if os.environ.get("DOCKER_WEBPRD_RUNNING") == "0" and not os.path.exists(STARTED_MARKER):
-            print("false")
-            sys.exit(0)
-        print("true")
+        # 模拟「网关上线前 nginx 因 upstream 解析不到网关而重启循环」。
+        # 必须照实模拟真实 docker 的语义：重启循环中的容器 .State.Running 仍是 true，
+        # 只有 .State.Status 是 restarting。否则「以为容器可用、随后 docker exec 报
+        # is restarting」这类缺陷会溜过测试（真实发布踩到过）。
+        looping = (os.environ.get("DOCKER_WEBPRD_RUNNING") == "0"
+                   and not os.path.exists(STARTED_MARKER))
+        if "State.Status" in fmt:
+            print("restarting" if looping else "running")
+        else:
+            print("true")
         sys.exit(0)
     print("true 0 running")
     sys.exit(0)
@@ -91,6 +97,14 @@ if args and args[0] == "start":
         open(STARTED_MARKER, "w").close()
     sys.exit(0)
 if args and args[0] == "exec":
+    target = args[1] if len(args) > 1 else ""
+    looping = (os.environ.get("DOCKER_WEBPRD_RUNNING") == "0"
+               and not os.path.exists(STARTED_MARKER))
+    if target == "cid-webprd" and looping:
+        # 真实 docker 对重启中的容器拒绝 exec
+        sys.stderr.write("Error response from daemon: Container {} is restarting,"
+                         " wait until the container is running\\n".format(target))
+        sys.exit(1)
     sys.stderr.write("nginx: configuration file test is successful\\n")
     sys.exit(0)
 if args and args[0] == "stats":
@@ -815,8 +829,12 @@ class AppReleaseTest(unittest.TestCase):
         self.assert_succeeds(result)
         self.assertIn("等待其自动恢复", result.stdout)
         calls = "\n".join(self.docker_calls())
+        # 重启循环里的容器 docker start 无效，必须 stop+start 立刻重置退避
+        self.assertIn("docker stop -t 10 cid-webprd", calls)
         self.assertIn("docker start cid-webprd", calls)
         self.assertIn("nginx -s reload", calls)
+        # 不得在容器还没 running 时就去 exec（真实 docker 会报 is restarting）
+        self.assertNotIn("is restarting", result.stderr)
         self.assertNotIn("restart", calls)
         self.assertNotIn("down", calls)
         self.assert_never_destructive()
