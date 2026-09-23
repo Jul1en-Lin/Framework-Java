@@ -1,0 +1,31 @@
+# 临时探针：从 GitHub runner（公网）测生产主机几个端口的可达性，用于区分
+# 「云安全组没放通」与「本机代理链路问题」。用完即删，不产生任何生产改动。
+name: 端口可达性探针（临时）
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: 从 runner 探测端口
+        env:
+          HOST: ${{ secrets.PRD_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          echo "::add-mask::$HOST"
+          echo "runner 出口 IP: $(curl -s -m 10 https://api.ipify.org || echo 未知)"
+          for port in 22 8666 8866; do
+            if timeout 10 bash -c "cat < /dev/null > /dev/tcp/$HOST/$port" 2>/dev/null; then
+              echo "TCP $port: 可连"
+            else
+              echo "TCP $port: 不可连（超时或被拒绝）"
+            fi
+          done
+          echo "--- 经 Nginx 的 HTTP 请求 ---"
+          curl -s -o /dev/null -m 20 -w "8666 GET /admin/  -> HTTP %{http_code}（连接 %{time_connect}s）\n" \
+            "http://$HOST:8666/admin/" || echo "8666 curl 失败（exit $?）"
+          curl -s -o /dev/null -m 20 -w "8866 GET /nacos/ -> HTTP %{http_code}（连接 %{time_connect}s）\n" \
+            "http://$HOST:8866/nacos/" || echo "8866 curl 失败（exit $?）"
