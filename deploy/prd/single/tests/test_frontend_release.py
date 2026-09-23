@@ -60,7 +60,7 @@ args = sys.argv[1:]
 url = next((a for a in args if a.startswith("http")), "")
 
 # 1. 模拟 fetch-package 的 OSS 下载
-if "github-release-web" in url or "oss" in url:
+if "github-release" in url or "oss" in url:
     if "-o" in args:
         out_idx = args.index("-o") + 1
         out_path = args[out_idx]

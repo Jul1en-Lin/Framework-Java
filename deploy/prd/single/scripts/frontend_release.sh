@@ -212,7 +212,7 @@ case "$COMMAND" in
     BUNDLE_FILE="$STAGING/frontend-dist.tar.gz"
     info "==> 从 OSS 取回前端发布包 (release_id: $RELEASE_ID)..."
     
-    OSS_KEY="github-release-web/$RELEASE_ID/frontend-dist.tar.gz"
+    OSS_KEY="github-release/web/$RELEASE_ID/frontend-dist.tar.gz"
     DOWNLOAD_URL="$(python3 "$OSS_PRESIGN" --env-file "$ENV_FILE" --method GET --key "$OSS_KEY" --expires 3600)"
     
     HTTP_CODE="$(curl -s -f -w "%{http_code}" -o "$BUNDLE_FILE" "$DOWNLOAD_URL" || true)"

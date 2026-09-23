@@ -215,7 +215,7 @@ jobs:
       - name: 上传构建产物至国内 OSS (预签名中转)
         run: |
           set -euo pipefail
-          oss_key="github-release-web/$RELEASE_ID/frontend-dist.tar.gz"
+          oss_key="github-release/web/$RELEASE_ID/frontend-dist.tar.gz"
           
           put_url="$(ssh $SSH_BASE_OPTS "$PRD_USER@$PRD_HOST" \
             "python3 '$STAGING/scripts/oss_presign.py' --env-file '$PRD_DEPLOY_ROOT/.env' --method PUT --key '$oss_key' --expires 3600")"
