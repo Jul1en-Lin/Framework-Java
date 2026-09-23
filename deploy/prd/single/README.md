@@ -224,6 +224,18 @@ MySQL 数据目录已有数据时，`docker-entrypoint-initdb.d` 下的初始化
      `OSS_BUCKET`、`OSS_ENDPOINT`、`OSS_ACCESS_KEY_ID`、`OSS_ACCESS_KEY_SECRET`。
      该用户没有删除权限；泄漏的影响面仅限这个前缀的读写。
 
+3. **在云控制台放通入站端口**（只做一次，且不在本仓库的管理范围内）：
+
+   - 必须放通 **TCP 8666**（生产 Web 入口，`frameworkjava-webprd` 映射 `0.0.0.0:8666->80`），
+     否则只有服务器本机能访问，公网一律静默超时；
+   - 建议把 **TCP 8866（Nacos）** 限制为管理 IP：它默认对全网开放，
+     Nacos 虽有客户端鉴权，但不该暴露在公网；
+   - 判断方法：服务器网卡上只有内网地址（公网 IP 是 NAT 映射，`ip route get <公网IP>` 显示
+     `via <网关>`），所以连「服务器访问自己的公网 IP」也要过云网关和这层规则。
+     若 `curl http://127.0.0.1:8666/admin/` 正常（401）而 `curl http://<公网IP>:8666/admin/`
+     超时，同时 8866 从公网可达，问题就在这一层，不在服务器防火墙（`ufw inactive`、
+     `iptables -S INPUT` 为 `ACCEPT`）。
+
 3. **准备完整可信的 known_hosts**：用可信渠道核对主机密钥指纹后再入库，不要在部署时 `ssh-keyscan`
    并直接信任结果（脚本与工作流都不会执行 keyscan）。
 
@@ -322,6 +334,19 @@ MySQL 数据目录已有数据时，`docker-entrypoint-initdb.d` 下的初始化
   ```
 
 只读验收也单独记录了不依赖前端的边界：这里校验的是网关链路的可达性，不校验尚未部署的前端首页。
+
+**这些检查全部在服务器本机执行**（`127.0.0.1:8666`），所以它们通过**不代表公网能访问**——
+公网入口还取决于云安全组（见「一次性准备」第 3 条）。外部可达性需要从另一台机器验证，例如：
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' http://<公网IP>:8666/admin/   # 401 即为通（鉴权响应）
+curl -s -o /dev/null -w '%{http_code}\n' -X POST \
+  http://<公网IP>:8666/admin/sys_user/login/password \
+  -H 'Content-Type: application/json' -d '{"phone":"...","password":"..."}'   # 200 + accessToken
+```
+
+2026-09-23 首次发布后就是这样发现 8666 未放通的：服务器本机 `POST /admin/sys_user/login/password`
+返回 200 且带 token，但公网访问超时（外部观测点 TCP 22/8866 可连、8666 超时）。
 
 ### 回滚
 
