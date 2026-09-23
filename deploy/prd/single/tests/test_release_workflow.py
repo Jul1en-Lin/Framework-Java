@@ -86,6 +86,13 @@ class ReleaseWorkflowTest(unittest.TestCase):
         # 预签名 URL 在日志里要加掩码
         self.assertIn("::add-mask::", self.workflow)
 
+    def test_sample_seconds_is_forwarded_to_the_remote_command(self):
+        # ssh 不带环境变量过去，必须显式传，否则服务器用默认 60s
+        # （首次真实发布因此只观察了 60s，而不是 #3 要求的 600s）
+        deploy_step = self.workflow.split("name: 发布四个应用服务", 1)[1].split("- name:", 1)[0]
+        self.assertIn("SAMPLE_SECONDS='$SAMPLE_SECONDS' bash", deploy_step)
+        self.assertIn("--operator '$OPERATOR'", deploy_step)
+
     # ---- 凭据与主机校验 ----
 
     def test_uses_production_environment_for_credentials(self):

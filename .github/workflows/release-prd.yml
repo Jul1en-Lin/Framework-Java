@@ -381,8 +381,10 @@ jobs:
           if [[ "$DRY_RUN" == "yes" ]]; then
             extra="--dry-run"
           fi
+          # ssh 不会把 runner 的环境变量带过去，需要显式传给远端命令，
+          # 否则服务器上会用脚本默认值（首次真实发布就因此只观察了 60s 而不是 600s）。
           ssh $SSH_BASE_OPTS "$PRD_USER@$PRD_HOST" \
-            "bash '$STAGING/prd-scripts/app_release.sh' deploy \
+            "SAMPLE_SECONDS='$SAMPLE_SECONDS' bash '$STAGING/prd-scripts/app_release.sh' deploy \
                --deploy-root '$PRD_DEPLOY_ROOT' \
                --package '$STAGING/package' \
                --release-id '$RELEASE_ID' \
